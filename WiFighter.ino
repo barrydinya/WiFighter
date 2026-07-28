@@ -1,10 +1,10 @@
 /*
- * WiFighter v0.2 - Portable WiFi/BLE Device Data Recon Tool
+ * WiFighter v0.3 - Portable WiFi/BLE Device Data Recon Tool
  * For M5StickC Plus / M5StickC Plus2
  *
  * Collects nearby WiFi AP info, BLE advertisements, and residual device
- * identifiers (MACs, names, preferred networks via probes where possible).
- * Designed for authorized security research and education only.
+ * identifiers (MACs, names, manufacturer data). Designed for authorized
+ * security research and education only.
  *
  * Hardware: M5StickC Plus or Plus2 (Plus2 recommended for RF)
  * Libraries: M5Unified, M5GFX, NimBLE-Arduino
@@ -24,13 +24,15 @@
 #include <Preferences.h>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 // ==================== CONFIG ====================
-#define MAX_WIFI_RESULTS   25
-#define MAX_BLE_RESULTS    35
+#define MAX_WIFI_RESULTS   30
+#define MAX_BLE_RESULTS    40
 #define DEFAULT_SCAN_SEC   6
 #define MENU_ITEMS         7
-#define DEBOUNCE_MS        160
+#define DEBOUNCE_MS        150
+#define IDLE_SLEEP_MS      180000UL   // 3 min default if autoSleep enabled
 
 // Colors
 #define COL_BG         BLACK
@@ -41,6 +43,7 @@
 #define COL_WARN       TFT_ORANGE
 #define COL_ERR        TFT_RED
 #define COL_DIM        TFT_DARKGREY
+#define COL_BAR        TFT_NAVY
 
 // ==================== STATE ====================
 enum AppState {
@@ -49,7 +52,6 @@ enum AppState {
   STATE_WIFI_SCAN,
   STATE_BLE_SCAN,
   STATE_HYBRID,
-  STATE_LOGS,
   STATE_SETTINGS,
   STATE_ABOUT
 };
@@ -61,13 +63,15 @@ int settingsIndex = 0;
 bool scanning = false;
 unsigned long lastButtonTime = 0;
 unsigned long lastRefresh = 0;
+unsigned long lastActivity = 0;
+unsigned long lastScanTime = 0;   // millis() of last completed scan
 
 // Runtime settings (persisted)
 int scanSeconds = DEFAULT_SCAN_SEC;
 int brightness = 80;
 bool autoSleep = false;
 
-// Menu
+// Menu labels
 const char* menuItems[MENU_ITEMS] = {
   "WiFi Recon",
   "BLE Recon",
@@ -78,7 +82,7 @@ const char* menuItems[MENU_ITEMS] = {
   "About"
 };
 
-// Data
+// Data structures
 struct WifiEntry {
   String ssid;
   String bssid;
@@ -120,6 +124,9 @@ void updateBattery();
 String authModeToStr(wifi_auth_mode_t m);
 void goHome();
 void goMenu();
+void sortWifiByRssi();
+void sortBleByRssi();
+String timeSinceLastScan();
 
 // ==================== SETUP ====================
 void setup() {
@@ -134,7 +141,7 @@ void setup() {
   // WiFi station for scanning
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
-  delay(80);
+  delay(60);
 
   // NimBLE
   NimBLEDevice::init("WiFighter");
@@ -145,9 +152,10 @@ void setup() {
   loadSettings();
   M5.Display.setBrightness(brightness);
 
+  lastActivity = millis();
   updateBattery();
   drawHome();
-  Serial.println("[WiFighter v0.2] Boot complete - Authorized use only");
+  Serial.println("[WiFighter v0.3] Boot complete - Authorized use only");
 }
 
 // ==================== LOOP ====================
@@ -155,20 +163,29 @@ void loop() {
   M5.update();
   handleButtons();
 
-  // Light refresh on home
-  if (millis() - lastRefresh > 4000) {
+  // Periodic refresh on home
+  if (millis() - lastRefresh > 3500) {
     updateBattery();
     if (currentState == STATE_HOME) drawHome();
     lastRefresh = millis();
   }
 
-  delay(8);
+  // Optional auto deep-sleep after idle
+  if (autoSleep && !scanning && (millis() - lastActivity > IDLE_SLEEP_MS)) {
+    statusMsg = "Sleep";
+    drawHome();
+    delay(400);
+    M5.Power.deepSleep(0);   // wake on button
+  }
+
+  delay(6);
 }
 
 // ==================== NAV HELPERS ====================
 void goHome() {
   currentState = STATE_HOME;
   scrollOffset = 0;
+  lastActivity = millis();
   drawHome();
 }
 
@@ -176,6 +193,7 @@ void goMenu() {
   currentState = STATE_MENU;
   menuIndex = 0;
   scrollOffset = 0;
+  lastActivity = millis();
   drawMenu();
 }
 
@@ -186,6 +204,7 @@ void handleButtons() {
   // ---- Button A : Select / Enter / Back ----
   if (M5.BtnA.wasPressed()) {
     lastButtonTime = millis();
+    lastActivity = millis();
 
     switch (currentState) {
       case STATE_HOME:
@@ -197,7 +216,7 @@ void handleButtons() {
           case 0: startWifiScan(); break;
           case 1: startBleScan();  break;
           case 2: startHybridScan(); break;
-          case 3: // View Results
+          case 3: // View Results – prefer WiFi, fall back to BLE
             if (!wifiResults.empty()) {
               currentState = STATE_WIFI_SCAN;
               scrollOffset = 0;
@@ -231,13 +250,11 @@ void handleButtons() {
       case STATE_WIFI_SCAN:
       case STATE_BLE_SCAN:
       case STATE_HYBRID:
-      case STATE_LOGS:
       case STATE_ABOUT:
-        goMenu();   // A = Back to menu from results/about
+        goMenu();
         break;
 
       case STATE_SETTINGS:
-        // Cycle value or save
         if (settingsIndex == 0) {           // Scan seconds
           scanSeconds += 2;
           if (scanSeconds > 14) scanSeconds = 4;
@@ -245,7 +262,9 @@ void handleButtons() {
           brightness += 20;
           if (brightness > 100) brightness = 40;
           M5.Display.setBrightness(brightness);
-        } else if (settingsIndex == 2) {    // Save & exit
+        } else if (settingsIndex == 2) {    // Auto-sleep toggle
+          autoSleep = !autoSleep;
+        } else if (settingsIndex == 3) {    // Save & Exit
           saveSettings();
           statusMsg = "Saved";
           goMenu();
@@ -261,16 +280,17 @@ void handleButtons() {
   // ---- Button B : Next / Scroll ----
   if (M5.BtnB.wasPressed()) {
     lastButtonTime = millis();
+    lastActivity = millis();
 
     if (currentState == STATE_MENU) {
       menuIndex = (menuIndex + 1) % MENU_ITEMS;
       drawMenu();
     }
     else if (currentState == STATE_SETTINGS) {
-      settingsIndex = (settingsIndex + 1) % 3;
+      settingsIndex = (settingsIndex + 1) % 4;
       drawSettings();
     }
-    else if (currentState == STATE_WIFI_SCAN || currentState == STATE_LOGS) {
+    else if (currentState == STATE_WIFI_SCAN) {
       if (!wifiResults.empty()) {
         scrollOffset = (scrollOffset + 1) % wifiResults.size();
         drawWifiResults();
@@ -283,58 +303,71 @@ void handleButtons() {
       }
     }
     else if (currentState == STATE_HYBRID) {
-      // Alternate view or just scroll wifi then ble conceptually
-      scrollOffset = (scrollOffset + 1) % max(1, (int)(wifiResults.size() + bleResults.size()));
-      drawHybridResults();
+      int total = (int)wifiResults.size() + (int)bleResults.size();
+      if (total > 0) {
+        scrollOffset = (scrollOffset + 1) % total;
+        drawHybridResults();
+      }
     }
   }
 
-  // Power button short = Home (supported on many boards)
+  // Power button short = Home
   if (M5.BtnPWR.wasClicked()) {
     lastButtonTime = millis();
+    lastActivity = millis();
     goHome();
   }
 }
 
 // ==================== DRAWING ====================
 void drawStatusBar() {
-  M5.Display.fillRect(0, 0, M5.Display.width(), 13, TFT_NAVY);
+  M5.Display.fillRect(0, 0, M5.Display.width(), 13, COL_BAR);
   M5.Display.setTextColor(COL_TEXT);
   M5.Display.setTextSize(1);
   M5.Display.setCursor(2, 2);
-  M5.Display.printf("WiFighter  %d%%", batteryPct);
-  M5.Display.setCursor(M5.Display.width() - 48, 2);
-  M5.Display.print(statusMsg.substring(0, 7));
+  M5.Display.printf("WiFighter %d%%", batteryPct);
+  M5.Display.setCursor(M5.Display.width() - 52, 2);
+  M5.Display.print(statusMsg.substring(0, 8));
 }
 
 void drawHome() {
   M5.Display.fillScreen(COL_BG);
   drawStatusBar();
 
+  // Title
   M5.Display.setTextColor(COL_TITLE);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(14, 26);
+  M5.Display.setCursor(18, 22);
   M5.Display.print("WiFighter");
 
   M5.Display.setTextSize(1);
-  M5.Display.setTextColor(COL_TEXT);
-  M5.Display.setCursor(10, 50);
-  M5.Display.print("BLE + WiFi Device Recon");
+  M5.Display.setTextColor(COL_DIM);
+  M5.Display.setCursor(22, 42);
+  M5.Display.print("BLE + WiFi Recon");
 
-  M5.Display.setCursor(10, 68);
+  // Status line
   M5.Display.setTextColor(COL_STATUS);
+  M5.Display.setCursor(8, 62);
   M5.Display.print("Status: ");
+  M5.Display.setTextColor(COL_TEXT);
   M5.Display.print(statusMsg);
 
+  // Counts
   M5.Display.setTextColor(COL_TEXT);
-  M5.Display.setCursor(10, 88);
-  M5.Display.printf("WiFi : %d nets", wifiResults.size());
-  M5.Display.setCursor(10, 101);
-  M5.Display.printf("BLE  : %d devs", bleResults.size());
+  M5.Display.setCursor(8, 80);
+  M5.Display.printf("WiFi nets : %d", (int)wifiResults.size());
+  M5.Display.setCursor(8, 93);
+  M5.Display.printf("BLE  devs : %d", (int)bleResults.size());
 
+  // Last scan age
+  M5.Display.setTextColor(COL_DIM);
+  M5.Display.setCursor(8, 108);
+  M5.Display.print(timeSinceLastScan());
+
+  // Hint
   M5.Display.setTextColor(COL_HIGHLIGHT);
-  M5.Display.setCursor(10, 122);
-  M5.Display.print("A:Menu   B:Scroll");
+  M5.Display.setCursor(8, 122);
+  M5.Display.print("A: Menu   PWR: Home");
 }
 
 void drawMenu() {
@@ -347,16 +380,16 @@ void drawMenu() {
   M5.Display.print("== MAIN MENU ==");
 
   for (int i = 0; i < MENU_ITEMS; i++) {
-    int y = 30 + i * 13;
+    int y = 30 + i * 12;
     if (i == menuIndex) {
-      M5.Display.fillRect(3, y - 1, M5.Display.width() - 6, 12, TFT_DARKGREY);
+      M5.Display.fillRect(2, y - 1, M5.Display.width() - 4, 12, TFT_DARKGREY);
       M5.Display.setTextColor(COL_HIGHLIGHT);
-      M5.Display.setCursor(8, y);
+      M5.Display.setCursor(6, y);
       M5.Display.print("> ");
       M5.Display.print(menuItems[i]);
     } else {
       M5.Display.setTextColor(COL_TEXT);
-      M5.Display.setCursor(16, y);
+      M5.Display.setCursor(14, y);
       M5.Display.print(menuItems[i]);
     }
   }
@@ -384,7 +417,7 @@ void drawWifiResults() {
     const WifiEntry& e = wifiResults[scrollOffset % wifiResults.size()];
     M5.Display.setTextColor(COL_TEXT);
     M5.Display.setCursor(4, 30);
-    M5.Display.printf("SSID: %.15s", e.ssid.c_str());
+    M5.Display.printf("SSID: %.16s", e.ssid.c_str());
     M5.Display.setCursor(4, 43);
     M5.Display.printf("BSSID:%s", e.bssid.c_str());
     M5.Display.setCursor(4, 56);
@@ -392,14 +425,14 @@ void drawWifiResults() {
     M5.Display.setCursor(4, 69);
     M5.Display.printf("Enc : %s", authModeToStr(e.enc).c_str());
 
-    // Peek next entries
+    // Peek next two
     M5.Display.setTextColor(COL_DIM);
     int shown = 0;
     for (size_t i = 1; i < wifiResults.size() && shown < 2; i++) {
       size_t idx = (scrollOffset + i) % wifiResults.size();
       M5.Display.setCursor(4, 90 + shown * 12);
       M5.Display.printf("%s %ddB",
-                        wifiResults[idx].ssid.substring(0, 11).c_str(),
+                        wifiResults[idx].ssid.substring(0, 12).c_str(),
                         wifiResults[idx].rssi);
       shown++;
     }
@@ -426,7 +459,7 @@ void drawBleResults() {
     const BleEntry& e = bleResults[scrollOffset % bleResults.size()];
     M5.Display.setTextColor(COL_TEXT);
     M5.Display.setCursor(4, 30);
-    M5.Display.printf("Name: %.14s", e.name.c_str());
+    M5.Display.printf("Name: %.15s", e.name.c_str());
     M5.Display.setCursor(4, 43);
     M5.Display.printf("MAC : %s", e.address.c_str());
     M5.Display.setCursor(4, 56);
@@ -450,34 +483,48 @@ void drawHybridResults() {
   M5.Display.setCursor(4, 15);
   M5.Display.printf("Hybrid  W:%d B:%d", (int)wifiResults.size(), (int)bleResults.size());
 
-  M5.Display.setTextColor(COL_TEXT);
-  M5.Display.setCursor(4, 32);
-  M5.Display.print("Top WiFi:");
-  if (!wifiResults.empty()) {
-    M5.Display.setCursor(4, 44);
-    M5.Display.printf("%.14s %ddB", wifiResults[0].ssid.c_str(), wifiResults[0].rssi);
+  // Show a combined view driven by scrollOffset
+  int total = (int)wifiResults.size() + (int)bleResults.size();
+  if (total == 0) {
+    M5.Display.setTextColor(COL_WARN);
+    M5.Display.setCursor(8, 50);
+    M5.Display.print("No data yet.");
   } else {
-    M5.Display.setCursor(4, 44);
-    M5.Display.print("(none)");
+    int idx = scrollOffset % total;
+    if (idx < (int)wifiResults.size()) {
+      const WifiEntry& e = wifiResults[idx];
+      M5.Display.setTextColor(COL_STATUS);
+      M5.Display.setCursor(4, 32);
+      M5.Display.print("[WiFi]");
+      M5.Display.setTextColor(COL_TEXT);
+      M5.Display.setCursor(4, 46);
+      M5.Display.printf("%.16s", e.ssid.c_str());
+      M5.Display.setCursor(4, 60);
+      M5.Display.printf("%s  %ddB", e.bssid.c_str(), e.rssi);
+      M5.Display.setCursor(4, 74);
+      M5.Display.printf("Ch:%d  %s", e.channel, authModeToStr(e.enc).c_str());
+    } else {
+      int bIdx = idx - (int)wifiResults.size();
+      const BleEntry& e = bleResults[bIdx];
+      M5.Display.setTextColor(COL_STATUS);
+      M5.Display.setCursor(4, 32);
+      M5.Display.print("[BLE]");
+      M5.Display.setTextColor(COL_TEXT);
+      M5.Display.setCursor(4, 46);
+      M5.Display.printf("%.16s", e.name.c_str());
+      M5.Display.setCursor(4, 60);
+      M5.Display.printf("%s", e.address.c_str());
+      M5.Display.setCursor(4, 74);
+      M5.Display.printf("%d dBm  %s", e.rssi, e.manufacturer.c_str());
+    }
+    M5.Display.setTextColor(COL_DIM);
+    M5.Display.setCursor(4, 96);
+    M5.Display.printf("Item %d of %d", idx + 1, total);
   }
-
-  M5.Display.setCursor(4, 62);
-  M5.Display.print("Top BLE:");
-  if (!bleResults.empty()) {
-    M5.Display.setCursor(4, 74);
-    M5.Display.printf("%.14s %ddB", bleResults[0].name.c_str(), bleResults[0].rssi);
-  } else {
-    M5.Display.setCursor(4, 74);
-    M5.Display.print("(none)");
-  }
-
-  M5.Display.setTextColor(COL_DIM);
-  M5.Display.setCursor(4, 96);
-  M5.Display.print("Use View Results for detail");
 
   M5.Display.setTextColor(COL_HIGHLIGHT);
   M5.Display.setCursor(4, 122);
-  M5.Display.print("A:Back to Menu");
+  M5.Display.print("B:Next  A:Back");
 }
 
 void drawSettings() {
@@ -488,48 +535,31 @@ void drawSettings() {
   M5.Display.setCursor(6, 16);
   M5.Display.print("== SETTINGS ==");
 
-  // Item 0 - Scan duration
-  int y = 34;
-  if (settingsIndex == 0) {
-    M5.Display.fillRect(3, y - 1, M5.Display.width() - 6, 12, TFT_DARKGREY);
-    M5.Display.setTextColor(COL_HIGHLIGHT);
-  } else {
-    M5.Display.setTextColor(COL_TEXT);
-  }
-  M5.Display.setCursor(8, y);
-  M5.Display.printf("Scan time: %ds", scanSeconds);
+  auto drawItem = [&](int idx, int y, const char* label, const String& value) {
+    if (settingsIndex == idx) {
+      M5.Display.fillRect(2, y - 1, M5.Display.width() - 4, 12, TFT_DARKGREY);
+      M5.Display.setTextColor(COL_HIGHLIGHT);
+    } else {
+      M5.Display.setTextColor(COL_TEXT);
+    }
+    M5.Display.setCursor(6, y);
+    M5.Display.printf("%s %s", label, value.c_str());
+  };
 
-  // Item 1 - Brightness
-  y = 48;
-  if (settingsIndex == 1) {
-    M5.Display.fillRect(3, y - 1, M5.Display.width() - 6, 12, TFT_DARKGREY);
-    M5.Display.setTextColor(COL_HIGHLIGHT);
-  } else {
-    M5.Display.setTextColor(COL_TEXT);
-  }
-  M5.Display.setCursor(8, y);
-  M5.Display.printf("Brightness: %d", brightness);
-
-  // Item 2 - Save
-  y = 62;
-  if (settingsIndex == 2) {
-    M5.Display.fillRect(3, y - 1, M5.Display.width() - 6, 12, TFT_DARKGREY);
-    M5.Display.setTextColor(COL_HIGHLIGHT);
-  } else {
-    M5.Display.setTextColor(COL_TEXT);
-  }
-  M5.Display.setCursor(8, y);
-  M5.Display.print("Save & Exit");
+  drawItem(0, 32, "Scan time:", String(scanSeconds) + "s");
+  drawItem(1, 46, "Brightness:", String(brightness));
+  drawItem(2, 60, "Auto-sleep:", autoSleep ? "ON" : "OFF");
+  drawItem(3, 74, "Save & Exit", "");
 
   M5.Display.setTextColor(COL_DIM);
-  M5.Display.setCursor(6, 90);
-  M5.Display.print("A:Change/Select");
-  M5.Display.setCursor(6, 102);
-  M5.Display.print("B:Next item");
+  M5.Display.setCursor(6, 96);
+  M5.Display.print("A:Change  B:Next");
+  M5.Display.setCursor(6, 108);
+  M5.Display.print("Sleep after 3 min idle");
 
   M5.Display.setTextColor(COL_WARN);
   M5.Display.setCursor(6, 122);
-  M5.Display.print("Changes persist");
+  M5.Display.print("Persists in NVS");
 }
 
 void drawAbout() {
@@ -538,7 +568,7 @@ void drawAbout() {
 
   M5.Display.setTextColor(COL_TITLE);
   M5.Display.setCursor(6, 18);
-  M5.Display.print("WiFighter v0.2");
+  M5.Display.print("WiFighter v0.3");
 
   M5.Display.setTextColor(COL_TEXT);
   M5.Display.setCursor(6, 36);
@@ -560,11 +590,22 @@ void drawAbout() {
 }
 
 // ==================== SCANS ====================
+void sortWifiByRssi() {
+  std::sort(wifiResults.begin(), wifiResults.end(),
+            [](const WifiEntry& a, const WifiEntry& b) { return a.rssi > b.rssi; });
+}
+
+void sortBleByRssi() {
+  std::sort(bleResults.begin(), bleResults.end(),
+            [](const BleEntry& a, const BleEntry& b) { return a.rssi > b.rssi; });
+}
+
 void startWifiScan() {
   statusMsg = "WiFi...";
   scanning = true;
+  lastActivity = millis();
   drawHome();
-  delay(30);
+  delay(20);
 
   wifiResults.clear();
   scrollOffset = 0;
@@ -583,7 +624,9 @@ void startWifiScan() {
     wifiResults.push_back(e);
   }
   WiFi.scanDelete();
+  sortWifiByRssi();
 
+  lastScanTime = millis();
   statusMsg = "WiFi OK";
   scanning = false;
   currentState = STATE_WIFI_SCAN;
@@ -594,8 +637,9 @@ void startWifiScan() {
 void startBleScan() {
   statusMsg = "BLE...";
   scanning = true;
+  lastActivity = millis();
   drawHome();
-  delay(30);
+  delay(20);
 
   bleResults.clear();
   scrollOffset = 0;
@@ -627,7 +671,9 @@ void startBleScan() {
     bleResults.push_back(e);
   }
   pScan->clearResults();
+  sortBleByRssi();
 
+  lastScanTime = millis();
   statusMsg = "BLE OK";
   scanning = false;
   currentState = STATE_BLE_SCAN;
@@ -638,8 +684,9 @@ void startBleScan() {
 void startHybridScan() {
   statusMsg = "Hybrid...";
   scanning = true;
+  lastActivity = millis();
   drawHome();
-  delay(20);
+  delay(15);
 
   // WiFi first
   wifiResults.clear();
@@ -656,6 +703,7 @@ void startHybridScan() {
     wifiResults.push_back(e);
   }
   WiFi.scanDelete();
+  sortWifiByRssi();
 
   // Then BLE
   bleResults.clear();
@@ -684,7 +732,9 @@ void startHybridScan() {
     bleResults.push_back(e);
   }
   pScan->clearResults();
+  sortBleByRssi();
 
+  lastScanTime = millis();
   statusMsg = "Done";
   scanning = false;
   currentState = STATE_HYBRID;
@@ -697,6 +747,7 @@ void clearAllData() {
   wifiResults.clear();
   bleResults.clear();
   scrollOffset = 0;
+  lastScanTime = 0;
   statusMsg = "Cleared";
   Serial.println("[Clear] All results wiped");
 }
@@ -705,6 +756,7 @@ void clearAllData() {
 void loadSettings() {
   scanSeconds = prefs.getInt("scanSec", DEFAULT_SCAN_SEC);
   brightness  = prefs.getInt("bright", 80);
+  autoSleep   = prefs.getBool("autoSleep", false);
   if (scanSeconds < 4 || scanSeconds > 14) scanSeconds = DEFAULT_SCAN_SEC;
   if (brightness < 40 || brightness > 100) brightness = 80;
 }
@@ -712,6 +764,7 @@ void loadSettings() {
 void saveSettings() {
   prefs.putInt("scanSec", scanSeconds);
   prefs.putInt("bright", brightness);
+  prefs.putBool("autoSleep", autoSleep);
   Serial.println("[Settings] Saved to NVS");
 }
 
@@ -733,4 +786,12 @@ String authModeToStr(wifi_auth_mode_t m) {
     case WIFI_AUTH_WPA3_PSK:        return "WPA3";
     default:                        return "UNK";
   }
+}
+
+String timeSinceLastScan() {
+  if (lastScanTime == 0) return "Last scan: never";
+  unsigned long sec = (millis() - lastScanTime) / 1000;
+  if (sec < 60) return "Last scan: " + String(sec) + "s ago";
+  if (sec < 3600) return "Last scan: " + String(sec / 60) + "m ago";
+  return "Last scan: " + String(sec / 3600) + "h ago";
 }
