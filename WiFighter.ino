@@ -1,5 +1,5 @@
 /*
- * WiFighter v0.3 - Portable WiFi/BLE Device Data Recon Tool
+ * WiFighter v0.4 - Portable WiFi/BLE Device Data Recon Tool
  * For M5StickC Plus / M5StickC Plus2
  *
  * Collects nearby WiFi AP info, BLE advertisements, and residual device
@@ -30,7 +30,7 @@
 #define MAX_WIFI_RESULTS   30
 #define MAX_BLE_RESULTS    40
 #define DEFAULT_SCAN_SEC   6
-#define MENU_ITEMS         7
+#define MENU_ITEMS         8
 #define DEBOUNCE_MS        150
 #define IDLE_SLEEP_MS      180000UL   // 3 min default if autoSleep enabled
 
@@ -44,6 +44,9 @@
 #define COL_ERR        TFT_RED
 #define COL_DIM        TFT_DARKGREY
 #define COL_BAR        TFT_NAVY
+#define COL_RSSI_OK    TFT_GREEN
+#define COL_RSSI_MID   TFT_YELLOW
+#define COL_RSSI_LOW   TFT_ORANGE
 
 // ==================== STATE ====================
 enum AppState {
@@ -53,7 +56,8 @@ enum AppState {
   STATE_BLE_SCAN,
   STATE_HYBRID,
   STATE_SETTINGS,
-  STATE_ABOUT
+  STATE_ABOUT,
+  STATE_EXPORT
 };
 
 AppState currentState = STATE_HOME;
@@ -64,7 +68,7 @@ bool scanning = false;
 unsigned long lastButtonTime = 0;
 unsigned long lastRefresh = 0;
 unsigned long lastActivity = 0;
-unsigned long lastScanTime = 0;   // millis() of last completed scan
+unsigned long lastScanTime = 0;
 
 // Runtime settings (persisted)
 int scanSeconds = DEFAULT_SCAN_SEC;
@@ -77,6 +81,7 @@ const char* menuItems[MENU_ITEMS] = {
   "BLE Recon",
   "Hybrid Scan",
   "View Results",
+  "Export Serial",
   "Settings",
   "Clear Data",
   "About"
@@ -113,10 +118,12 @@ void drawHybridResults();
 void drawSettings();
 void drawAbout();
 void drawStatusBar();
+void drawRssiBar(int x, int y, int rssi, int maxW = 60);
 void handleButtons();
 void startWifiScan();
 void startBleScan();
 void startHybridScan();
+void exportSerial();
 void clearAllData();
 void loadSettings();
 void saveSettings();
@@ -126,6 +133,7 @@ void goHome();
 void goMenu();
 void sortWifiByRssi();
 void sortBleByRssi();
+void dedupBle();
 String timeSinceLastScan();
 
 // ==================== SETUP ====================
@@ -155,7 +163,7 @@ void setup() {
   lastActivity = millis();
   updateBattery();
   drawHome();
-  Serial.println("[WiFighter v0.3] Boot complete - Authorized use only");
+  Serial.println("[WiFighter v0.4] Boot complete - Authorized use only");
 }
 
 // ==================== LOOP ====================
@@ -216,8 +224,12 @@ void handleButtons() {
           case 0: startWifiScan(); break;
           case 1: startBleScan();  break;
           case 2: startHybridScan(); break;
-          case 3: // View Results – prefer WiFi, fall back to BLE
-            if (!wifiResults.empty()) {
+          case 3: // View Results – prefer hybrid view if both, else single
+            if (!wifiResults.empty() && !bleResults.empty()) {
+              currentState = STATE_HYBRID;
+              scrollOffset = 0;
+              drawHybridResults();
+            } else if (!wifiResults.empty()) {
               currentState = STATE_WIFI_SCAN;
               scrollOffset = 0;
               drawWifiResults();
@@ -231,16 +243,19 @@ void handleButtons() {
             }
             break;
           case 4:
+            exportSerial();
+            break;
+          case 5:
             currentState = STATE_SETTINGS;
             settingsIndex = 0;
             drawSettings();
             break;
-          case 5:
+          case 6:
             clearAllData();
             statusMsg = "Cleared";
             drawMenu();
             break;
-          case 6:
+          case 7:
             currentState = STATE_ABOUT;
             drawAbout();
             break;
@@ -251,6 +266,7 @@ void handleButtons() {
       case STATE_BLE_SCAN:
       case STATE_HYBRID:
       case STATE_ABOUT:
+      case STATE_EXPORT:
         goMenu();
         break;
 
@@ -330,44 +346,57 @@ void drawStatusBar() {
   M5.Display.print(statusMsg.substring(0, 8));
 }
 
+void drawRssiBar(int x, int y, int rssi, int maxW) {
+  // Map -90..-30 dBm to 0..maxW
+  int level = constrain(map(rssi, -90, -30, 0, maxW), 0, maxW);
+  uint16_t col = COL_RSSI_LOW;
+  if (rssi > -55) col = COL_RSSI_OK;
+  else if (rssi > -70) col = COL_RSSI_MID;
+
+  M5.Display.drawRect(x, y, maxW + 2, 8, COL_DIM);
+  if (level > 0) {
+    M5.Display.fillRect(x + 1, y + 1, level, 6, col);
+  }
+}
+
 void drawHome() {
   M5.Display.fillScreen(COL_BG);
   drawStatusBar();
 
-  // Title
+  // Title block
   M5.Display.setTextColor(COL_TITLE);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(18, 22);
+  M5.Display.setCursor(14, 20);
   M5.Display.print("WiFighter");
 
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(COL_DIM);
-  M5.Display.setCursor(22, 42);
-  M5.Display.print("BLE + WiFi Recon");
+  M5.Display.setCursor(18, 40);
+  M5.Display.print("BLE + WiFi Recon v0.4");
 
-  // Status line
+  // Status
   M5.Display.setTextColor(COL_STATUS);
-  M5.Display.setCursor(8, 62);
+  M5.Display.setCursor(8, 58);
   M5.Display.print("Status: ");
   M5.Display.setTextColor(COL_TEXT);
   M5.Display.print(statusMsg);
 
-  // Counts
+  // Counts with simple visual
   M5.Display.setTextColor(COL_TEXT);
-  M5.Display.setCursor(8, 80);
-  M5.Display.printf("WiFi nets : %d", (int)wifiResults.size());
-  M5.Display.setCursor(8, 93);
-  M5.Display.printf("BLE  devs : %d", (int)bleResults.size());
+  M5.Display.setCursor(8, 76);
+  M5.Display.printf("WiFi  : %2d", (int)wifiResults.size());
+  M5.Display.setCursor(8, 90);
+  M5.Display.printf("BLE   : %2d", (int)bleResults.size());
 
   // Last scan age
   M5.Display.setTextColor(COL_DIM);
-  M5.Display.setCursor(8, 108);
+  M5.Display.setCursor(8, 106);
   M5.Display.print(timeSinceLastScan());
 
   // Hint
   M5.Display.setTextColor(COL_HIGHLIGHT);
   M5.Display.setCursor(8, 122);
-  M5.Display.print("A: Menu   PWR: Home");
+  M5.Display.print("A:Menu   PWR:Home");
 }
 
 void drawMenu() {
@@ -379,18 +408,23 @@ void drawMenu() {
   M5.Display.setCursor(6, 16);
   M5.Display.print("== MAIN MENU ==");
 
-  for (int i = 0; i < MENU_ITEMS; i++) {
-    int y = 30 + i * 12;
-    if (i == menuIndex) {
-      M5.Display.fillRect(2, y - 1, M5.Display.width() - 4, 12, TFT_DARKGREY);
+  // Show 7 items max on screen; scroll if needed (we have 8)
+  int start = 0;
+  if (menuIndex > 5) start = menuIndex - 5;
+
+  for (int i = 0; i < 6 && (start + i) < MENU_ITEMS; i++) {
+    int idx = start + i;
+    int y = 30 + i * 13;
+    if (idx == menuIndex) {
+      M5.Display.fillRect(2, y - 1, M5.Display.width() - 4, 13, TFT_DARKGREY);
       M5.Display.setTextColor(COL_HIGHLIGHT);
       M5.Display.setCursor(6, y);
       M5.Display.print("> ");
-      M5.Display.print(menuItems[i]);
+      M5.Display.print(menuItems[idx]);
     } else {
       M5.Display.setTextColor(COL_TEXT);
       M5.Display.setCursor(14, y);
-      M5.Display.print(menuItems[i]);
+      M5.Display.print(menuItems[idx]);
     }
   }
 
@@ -422,19 +456,18 @@ void drawWifiResults() {
     M5.Display.printf("BSSID:%s", e.bssid.c_str());
     M5.Display.setCursor(4, 56);
     M5.Display.printf("RSSI: %d dBm  Ch:%d", e.rssi, e.channel);
-    M5.Display.setCursor(4, 69);
+    drawRssiBar(4, 70, e.rssi, 70);
+    M5.Display.setCursor(4, 82);
     M5.Display.printf("Enc : %s", authModeToStr(e.enc).c_str());
 
-    // Peek next two
+    // Peek next
     M5.Display.setTextColor(COL_DIM);
-    int shown = 0;
-    for (size_t i = 1; i < wifiResults.size() && shown < 2; i++) {
-      size_t idx = (scrollOffset + i) % wifiResults.size();
-      M5.Display.setCursor(4, 90 + shown * 12);
-      M5.Display.printf("%s %ddB",
-                        wifiResults[idx].ssid.substring(0, 12).c_str(),
+    if (wifiResults.size() > 1) {
+      size_t idx = (scrollOffset + 1) % wifiResults.size();
+      M5.Display.setCursor(4, 100);
+      M5.Display.printf("Next: %.12s %ddB",
+                        wifiResults[idx].ssid.c_str(),
                         wifiResults[idx].rssi);
-      shown++;
     }
   }
 
@@ -464,8 +497,9 @@ void drawBleResults() {
     M5.Display.printf("MAC : %s", e.address.c_str());
     M5.Display.setCursor(4, 56);
     M5.Display.printf("RSSI: %d dBm", e.rssi);
+    drawRssiBar(4, 70, e.rssi, 70);
     if (e.manufacturer.length() > 0) {
-      M5.Display.setCursor(4, 69);
+      M5.Display.setCursor(4, 82);
       M5.Display.printf("Mfr : %.16s", e.manufacturer.c_str());
     }
   }
@@ -483,7 +517,6 @@ void drawHybridResults() {
   M5.Display.setCursor(4, 15);
   M5.Display.printf("Hybrid  W:%d B:%d", (int)wifiResults.size(), (int)bleResults.size());
 
-  // Show a combined view driven by scrollOffset
   int total = (int)wifiResults.size() + (int)bleResults.size();
   if (total == 0) {
     M5.Display.setTextColor(COL_WARN);
@@ -501,7 +534,8 @@ void drawHybridResults() {
       M5.Display.printf("%.16s", e.ssid.c_str());
       M5.Display.setCursor(4, 60);
       M5.Display.printf("%s  %ddB", e.bssid.c_str(), e.rssi);
-      M5.Display.setCursor(4, 74);
+      drawRssiBar(4, 74, e.rssi, 70);
+      M5.Display.setCursor(4, 86);
       M5.Display.printf("Ch:%d  %s", e.channel, authModeToStr(e.enc).c_str());
     } else {
       int bIdx = idx - (int)wifiResults.size();
@@ -514,11 +548,12 @@ void drawHybridResults() {
       M5.Display.printf("%.16s", e.name.c_str());
       M5.Display.setCursor(4, 60);
       M5.Display.printf("%s", e.address.c_str());
-      M5.Display.setCursor(4, 74);
+      drawRssiBar(4, 74, e.rssi, 70);
+      M5.Display.setCursor(4, 86);
       M5.Display.printf("%d dBm  %s", e.rssi, e.manufacturer.c_str());
     }
     M5.Display.setTextColor(COL_DIM);
-    M5.Display.setCursor(4, 96);
+    M5.Display.setCursor(4, 104);
     M5.Display.printf("Item %d of %d", idx + 1, total);
   }
 
@@ -568,7 +603,7 @@ void drawAbout() {
 
   M5.Display.setTextColor(COL_TITLE);
   M5.Display.setCursor(6, 18);
-  M5.Display.print("WiFighter v0.3");
+  M5.Display.print("WiFighter v0.4");
 
   M5.Display.setTextColor(COL_TEXT);
   M5.Display.setCursor(6, 36);
@@ -598,6 +633,23 @@ void sortWifiByRssi() {
 void sortBleByRssi() {
   std::sort(bleResults.begin(), bleResults.end(),
             [](const BleEntry& a, const BleEntry& b) { return a.rssi > b.rssi; });
+}
+
+void dedupBle() {
+  // Keep strongest RSSI per unique MAC
+  std::vector<BleEntry> unique;
+  for (const auto& e : bleResults) {
+    bool found = false;
+    for (auto& u : unique) {
+      if (u.address == e.address) {
+        if (e.rssi > u.rssi) u = e;
+        found = true;
+        break;
+      }
+    }
+    if (!found) unique.push_back(e);
+  }
+  bleResults = unique;
 }
 
 void startWifiScan() {
@@ -671,6 +723,7 @@ void startBleScan() {
     bleResults.push_back(e);
   }
   pScan->clearResults();
+  dedupBle();
   sortBleByRssi();
 
   lastScanTime = millis();
@@ -678,7 +731,7 @@ void startBleScan() {
   scanning = false;
   currentState = STATE_BLE_SCAN;
   drawBleResults();
-  Serial.printf("[BLE] %d devices\n", bleResults.size());
+  Serial.printf("[BLE] %d devices (deduped)\n", bleResults.size());
 }
 
 void startHybridScan() {
@@ -732,6 +785,7 @@ void startHybridScan() {
     bleResults.push_back(e);
   }
   pScan->clearResults();
+  dedupBle();
   sortBleByRssi();
 
   lastScanTime = millis();
@@ -741,6 +795,40 @@ void startHybridScan() {
   scrollOffset = 0;
   drawHybridResults();
   Serial.printf("[Hybrid] WiFi:%d  BLE:%d\n", wifiResults.size(), bleResults.size());
+}
+
+void exportSerial() {
+  statusMsg = "Export";
+  currentState = STATE_EXPORT;
+  drawHome();
+
+  Serial.println("========== WiFighter Export ==========");
+  Serial.printf("WiFi networks: %d\n", wifiResults.size());
+  for (size_t i = 0; i < wifiResults.size(); i++) {
+    const auto& e = wifiResults[i];
+    Serial.printf("%2d | %-20s | %s | %4d dBm | Ch %2d | %s\n",
+                  (int)i + 1,
+                  e.ssid.c_str(),
+                  e.bssid.c_str(),
+                  e.rssi,
+                  e.channel,
+                  authModeToStr(e.enc).c_str());
+  }
+  Serial.printf("\nBLE devices: %d\n", bleResults.size());
+  for (size_t i = 0; i < bleResults.size(); i++) {
+    const auto& e = bleResults[i];
+    Serial.printf("%2d | %-16s | %s | %4d dBm | Mfr %s\n",
+                  (int)i + 1,
+                  e.name.c_str(),
+                  e.address.c_str(),
+                  e.rssi,
+                  e.manufacturer.c_str());
+  }
+  Serial.println("======================================");
+
+  statusMsg = "Exported";
+  delay(400);
+  goMenu();
 }
 
 void clearAllData() {

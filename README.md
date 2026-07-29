@@ -7,13 +7,14 @@ WiFighter scans nearby WiFi access points and BLE advertisements to collect devi
 > **Legal notice**  
 > This is for authorized penetration testing, security research, and educational purposes on systems you own or have explicit written permission to test. Unauthorized access or disruption of networks/systems is illegal under laws like the US Computer Fraud and Abuse Act and similar regulations worldwide. Respect scope, obtain permissions, and avoid impacting production or third-party systems.
 
-## Features (v0.3)
+## Features (v0.4)
 
-- Clean **Home Screen** with live battery %, status, entry counts, and last-scan age
-- Full **Main Menu** (button driven)
-- **WiFi Recon** – SSID, BSSID, RSSI, channel, encryption type (sorted by strength)
-- **BLE Recon** – name, MAC, RSSI, manufacturer data preview (sorted by strength)
+- Clean **Home Screen** with live battery %, status, entry counts, last-scan age
+- Full **Main Menu** (button driven, scrollable)
+- **WiFi Recon** – SSID, BSSID, RSSI, channel, encryption (sorted by strength + RSSI bar)
+- **BLE Recon** – name, MAC, RSSI, manufacturer data (deduplicated by MAC, sorted + RSSI bar)
 - **Hybrid Scan** – sequential WiFi + BLE with combined scrollable results
+- **Export Serial** – dump full results table over USB Serial
 - **Settings** (scan duration, brightness, auto-sleep) with NVS persistence
 - Optional auto deep-sleep after 3 min idle
 - Clear data option
@@ -60,15 +61,18 @@ WiFighter scans nearby WiFi access points and BLE advertisements to collect devi
 
 - [ ] Persistent log storage of last N scans (Preferences or SD via Grove)
 - [ ] Probe-request focused mode (promiscuous / monitor mode experiments)
-- [ ] RSSI proximity alerts / simple graph
-- [ ] Export via serial or BLE GATT characteristic
+- [ ] RSSI proximity alerts / simple graph history
+- [ ] Export via BLE GATT characteristic
 - [ ] Companion Arduino 32-bit board support for SD + GPS logging
 - [ ] Integration path with Bruce / NEMO style firmwares
 - [x] Auto deep-sleep after idle timeout
+- [x] Serial export table
+- [x] BLE MAC deduplication
+- [x] Visual RSSI bars
 
 ## Project Status
 
-**v0.3** – Home screen, Menu, WiFi/BLE/Hybrid scanners, Settings with persistence + auto-sleep, RSSI sorting, last-scan age, and solid navigation are complete and usable in the field for authorized work.
+**v0.4** – Home screen, Menu, WiFi/BLE/Hybrid scanners, Settings with persistence + auto-sleep, RSSI sorting + bars, BLE dedup, Serial export, last-scan age, and solid navigation are complete and usable in the field for authorized work.
 
 Continue iterating until feature-complete, then tag a formal release.
 
