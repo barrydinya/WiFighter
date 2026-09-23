@@ -7,7 +7,7 @@ Detects nearby Wi-Fi and Bluetooth Low Energy devices, scores how long they stic
 > **ETHICAL USE ONLY**  
 > Authorized security research, personal privacy monitoring, or lab testing on networks/devices you own or have explicit written permission to observe. Unauthorized tracking, monitoring, or disruption is illegal.
 
-## Status (v0.1)
+## Status (v0.2)
 
 - [x] Home screen with live stats (devices / active / left / high-persist)
 - [x] Full menu navigation (BtnA select, BtnB next)
@@ -16,12 +16,13 @@ Detects nearby Wi-Fi and Bluetooth Low Energy devices, scores how long they stic
 - [x] Settings + About stubs
 - [x] Offline OUI vendor lookup table (`oui.h`)
 - [x] PlatformIO environments for Plus & Plus2
-- [ ] Real BLE scan (NimBLE) + result ingestion
-- [ ] Real WiFi scan + probe/SSID capture
+- [x] Real BLE scan (NimBLE) + result ingestion
+- [x] Real WiFi scan (AP BSSID + SSID + RSSI)
 - [ ] AirTag / Tile / SmartTag heuristics
 - [ ] Persistence scoring refinements + allowlist
 - [ ] Preferences save/restore of known devices
 - [ ] Power management / deep-sleep between scans
+- [ ] Promiscuous mode for WiFi *stations* (clients)
 
 ## Hardware
 
@@ -49,19 +50,25 @@ pio run -e m5stick-c-plus2 -t upload
 ## Screens
 
 - **Home** – status circle, live counters, quick scan toggle
-- **Menu** – Start Scan, Device List, Alerts/Left, Settings, About, Back
-- **Devices** – short MAC + RSSI + persist score (color coded)
+- **Menu** – Start/Stop Scan, Device List, Alerts/Left, Settings, About, Back
+- **Devices** – short MAC + RSSI + type (B/W) + persist score (color coded)
 - **Alerts** – devices flagged as LEFT or high-persistence
 - **Settings / About** – current thresholds + version info
 
-## Next Steps (in order)
+## How “Left” works
 
-1. Wire real WiFi scan (`WiFi.scanNetworks`) and BLE scan (`NimBLEScan`).
-2. Populate `devices` vector from results, update `hitCount` / `lastSeen`.
-3. Expand OUI table or move to SPIFFS manufacturer DB.
-4. Improve scoring (time-window distribution, ε-connectedness).
-5. Save high-value devices to Preferences / SPIFFS.
-6. Optional companion Arduino board for SD logging or GPS geotag.
+1. Every scan cycle (default 5 s) the device performs a WiFi AP scan and a 3-second active BLE scan.
+2. Each seen MAC is upserted: hit count++, lastSeen updated, persist score recalculated.
+3. If a device is not seen for > 45 s it is marked **LEFT** and appears in the Alerts screen.
+4. High persistence score (≥ 0.45) is also surfaced as a possible tracker/follower.
+
+## Next Steps
+
+1. Expand OUI table or move to SPIFFS manufacturer DB.
+2. Add AirTag / Tile / Samsung SmartTag heuristics (manufacturer data + service UUIDs).
+3. Save high-value devices to Preferences / SPIFFS.
+4. Optional companion Arduino board for SD logging or GPS geotag.
+5. Promiscuous WiFi for station (client) MACs.
 
 ## License
 
