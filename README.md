@@ -7,13 +7,13 @@ Detects nearby Wi-Fi and Bluetooth Low Energy devices, scores how long they stic
 > **ETHICAL USE ONLY**  
 > Authorized security research, personal privacy monitoring, or lab testing on networks/devices you own or have explicit written permission to observe. Unauthorized tracking, monitoring, or disruption is illegal.
 
-## Status (v0.2)
+## Status (v0.3)
 
 - [x] Home screen with live stats (devices / active / left / high-persist)
 - [x] Full menu navigation (BtnA select, BtnB next)
-- [x] Device list view (scrollable)
+- [x] Device list view (scrollable) + per-device detail
 - [x] Alerts / Left devices view
-- [x] Settings + About stubs
+- [x] Settings + About screens
 - [x] Offline OUI vendor lookup table (`oui.h`)
 - [x] PlatformIO environments for Plus & Plus2
 - [x] Real BLE scan (NimBLE) + result ingestion
@@ -51,13 +51,14 @@ pio run -e m5stick-c-plus2 -t upload
 
 - **Home** – status circle, live counters, quick scan toggle
 - **Menu** – Start/Stop Scan, Device List, Alerts/Left, Settings, About, Back
-- **Devices** – short MAC + RSSI + type (B/W) + persist score (color coded)
+- **Devices** – short MAC / name + RSSI + type (B/W/*) + persist score
 - **Alerts** – devices flagged as LEFT or high-persistence
+- **Detail** – full MAC, vendor, radio, hits, last-seen
 - **Settings / About** – current thresholds + version info
 
 ## How “Left” works
 
-1. Every scan cycle (default 5 s) the device performs a WiFi AP scan and a 3-second active BLE scan.
+1. Every scan cycle (default 5 s) the device performs a WiFi AP scan and a ~3 s active BLE scan.
 2. Each seen MAC is upserted: hit count++, lastSeen updated, persist score recalculated.
 3. If a device is not seen for > 45 s it is marked **LEFT** and appears in the Alerts screen.
 4. High persistence score (≥ 0.45) is also surfaced as a possible tracker/follower.
