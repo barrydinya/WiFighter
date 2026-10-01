@@ -1,79 +1,79 @@
 # WiFighter
 
-**M5StickC Plus / Plus2 dual BLE + WiFi leftover tracker**
+**M5StickC Plus / Plus2 passive BLE + WiFi leftover tracker**
 
-Detects nearby Wi-Fi access points and Bluetooth Low Energy advertisers, scores how long they stick around, and flags devices that have **left** the area or show high persistence.
+Watches radios that are still talking after they leave a network: Wi-Fi access points, stations sending probe requests (remembered SSIDs, not associated), and BLE advertisers including common tracker company IDs.
 
-> **ETHICAL USE ONLY**  
-> Authorized security research, personal privacy monitoring, or lab testing on networks/devices you own or have explicit written permission to observe. Unauthorized tracking, monitoring, or disruption is illegal.
+> **ETHICAL USE ONLY**
+> Authorized security research, personal privacy monitoring, or lab testing on networks and devices you own or have explicit written permission to observe. Unauthorized tracking or disruption is illegal.
 
-This firmware is **passive**. It does not deauth, inject, clone APs, or act as HID.
+This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, or connect to targets.
 
-## Status (v0.4.0)
+## Status (v0.5.0)
 
-- [x] Home screen — scan ring, version, radio flags, DEV/LIVE/LEFT/HIGH tiles
-- [x] Menu — scan toggle, device list, leftovers, settings, clear table, about, home
-- [x] Device list + per-device detail (MAC, OUI vendor, radio, hits, persist, last-seen)
-- [x] Alerts view for LEFT and high-persistence radios
-- [x] Settings with NVS save (WiFi/BLE enable, scan period, left-after window)
+- [x] Home screen — live ring, radio flags, last-left ticker, DEV/LIVE/LEFT/HIGH/PRB tiles
+- [x] Menu — scan toggle, device list, leftovers, settings, allowlist, clear, about, home
+- [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, persist, last-seen)
+- [x] Alerts view for LEFT, probe-only stations, high persistence, and tracker tags
+- [x] Settings saved to NVS (radios, probe sniff, scan period, left window, allowlist)
 - [x] Hold BtnB to jump Home
-- [x] Serial status after each scan cycle
-- [x] Offline OUI table (`oui.h`)
-- [x] PlatformIO envs for Plus and Plus2
-- [ ] AirTag / Tile / SmartTag protocol heuristics
-- [ ] Allowlist
-- [ ] Promiscuous Wi-Fi station (client) leftovers
-- [ ] Deep-sleep between scans
+- [x] Passive probe-request hop on channels 1 / 6 / 11
+- [x] BLE company-ID tags (Apple, Samsung, Google) and Tile name heuristic
+- [x] 6-slot MAC allowlist
+- [ ] Deep sleep between scans (UI stays awake so buttons keep working)
+- [ ] Full offline OUI database
 
 ## Hardware
 
-| Device         | Notes                             |
-|----------------|-----------------------------------|
-| M5StickC Plus  | Original (AXP192)                 |
-| M5StickC Plus2 | Preferred — better RF + more RAM  |
+| Device | Notes |
+| --- | --- |
+| M5StickC Plus | Original (AXP192) |
+| M5StickC Plus2 | Preferred — better RF |
 
 ## Quick start
 
 ### PlatformIO
+
 ```bash
 pio run -e m5stick-c-plus2 -t upload
 ```
 
 ### Arduino IDE
+
 1. Board: `M5Stick-C-Plus` or `M5StickC Plus2`
 2. Libraries: `M5Unified`, `NimBLE-Arduino`
-3. Open `WiFighter.ino` → Upload
+3. Open `WiFighter.ino` and upload
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
 | **BtnB** | Open menu / next item / scroll |
-| **BtnA** | Select / enter / back / toggle scan on Home |
-| **Hold BtnB** | Jump to Home from any screen |
+| **BtnA** | Select / back / toggle scan on Home |
+| **Hold BtnB** | Jump Home |
 
 ## Screens
 
-- **Home** — status ring, counters, radio flags
-- **Menu** — Start/Stop, Devices, Alerts/Left, Settings, Clear, About, Home
-- **Devices** — name or short MAC, B/W/*, RSSI, persist score
-- **Alerts** — LEFT or high-persist only
-- **Detail** — full MAC, vendor, radio, hits, last-seen
-- **Settings** — toggle radios, cycle period / left window, save to NVS
+- **Home** — status ring, counters, last device that went LEFT
+- **Menu** — scan, devices, alerts, settings, allow last opened MAC, clear, about, home
+- **Devices** — `W` AP, `B` BLE, `P` probe-only station, `*` both radios
+- **Alerts** — LEFT, probes, high persist, or tracker tag
+- **Detail** — full MAC, remembered SSID, vendor, tag
+- **Settings** — radios, probe sniff, period, left window, save
 
-## How “Left” works
+## How “left” works
 
-1. Each cycle (default 5 s) runs a Wi-Fi AP scan and a ~3 s active BLE scan.
-2. Each MAC is upserted: hits++, lastSeen now, persist score updated.
-3. If a device is unseen longer than the left window (default 45 s, adjustable) it is marked **LEFT**.
-4. Persist ≥ 0.45 is also raised on the Alerts screen.
+1. Each cycle scans Wi-Fi APs, sniffs probe requests on 1/6/11, then scans BLE.
+2. A probe request is a station that is not associated and is still advertising a network it used to join.
+3. A MAC unseen longer than the left window (default 45 s) is marked **LEFT**.
+4. Allowlisted MACs are dropped and not shown again.
 
 ## Serial
 
-`115200` baud after every cycle:
+`115200` baud:
 
 ```
-[WF] v0.4.0 live=6 left=1 high=2 total=9 wifi=1 ble=1
+[WF] v0.5.0 live=6 left=1 high=2 probe=3 total=9
 ```
 
 ## License
