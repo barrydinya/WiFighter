@@ -9,14 +9,15 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, or connect to targets.
 
-## Status (v0.5.0)
+## Status (v0.6.0)
 
-- [x] Home screen — live ring, radio flags, last-left ticker, DEV/LIVE/LEFT/HIGH/PRB tiles
-- [x] Menu — scan toggle, device list, leftovers, settings, allowlist, clear, about, home
+- [x] Home screen — live pulse ring, radio flags, last-left line, DEV / IN / LEFT / HIGH / PRB tiles
+- [x] Menu — scan toggle, device list, leftovers, settings, allowlist, clear, about, home, with right-side hints
 - [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, persist, last-seen)
 - [x] Alerts view for LEFT, probe-only stations, high persistence, and tracker tags
 - [x] Settings saved to NVS (radios, probe sniff, scan period, left window, allowlist)
 - [x] Hold BtnB to jump Home
+- [x] Non-blocking scan slices so Home and Menu stay responsive
 - [x] Passive probe-request hop on channels 1 / 6 / 11
 - [x] BLE company-ID tags (Apple, Samsung, Google) and Tile name heuristic
 - [x] 6-slot MAC allowlist
@@ -54,7 +55,7 @@ pio run -e m5stick-c-plus2 -t upload
 
 ## Screens
 
-- **Home** — status ring, counters, last device that went LEFT
+- **Home** — pulse ring, counters, last device that went LEFT. A toggles scan. B opens menu.
 - **Menu** — scan, devices, alerts, settings, allow last opened MAC, clear, about, home
 - **Devices** — `W` AP, `B` BLE, `P` probe-only station, `*` both radios
 - **Alerts** — LEFT, probes, high persist, or tracker tag
@@ -63,7 +64,7 @@ pio run -e m5stick-c-plus2 -t upload
 
 ## How “left” works
 
-1. Each cycle scans Wi-Fi APs, sniffs probe requests on 1/6/11, then scans BLE.
+1. Each cycle scans Wi-Fi APs, sniffs probe requests on 1/6/11, then scans BLE. Phases yield so the UI keeps painting.
 2. A probe request is a station that is not associated and is still advertising a network it used to join.
 3. A MAC unseen longer than the left window (default 45 s) is marked **LEFT**.
 4. Allowlisted MACs are dropped and not shown again.
@@ -73,7 +74,7 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v0.5.0 live=6 left=1 high=2 probe=3 total=9
+[WF] v0.6.0 live=6 left=1 high=2 probe=3 total=9
 ```
 
 ## License
