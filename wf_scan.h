@@ -46,7 +46,12 @@ static void scanBle() {
   scan->setActiveScan(true);
   scan->setInterval(134);
   scan->setWindow(120);
-  NimBLEScanResults res = scan->start(BLE_SCAN_MS / 1000, false);
+  // NimBLE-Arduino 1.4: start() returns bool; results come from getResults().
+  if (!scan->start(BLE_SCAN_MS / 1000, false)) {
+    scan->clearResults();
+    return;
+  }
+  NimBLEScanResults res = scan->getResults();
   int n = res.getCount();
   for (int i = 0; i < n; i++) {
     const NimBLEAdvertisedDevice* d = res.getDevice(i);
@@ -71,9 +76,10 @@ static void tickScan() {
   }
   uint32_t now = millis();
   const uint8_t chans[] = {1, 6, 11};
+  uint32_t period = (uint32_t)g_scanPeriodSec * 1000UL;
   switch (g_phase) {
     case PH_WAIT:
-      if (now - g_lastScan < SCAN_PERIOD_MS) return;
+      if (now - g_lastScan < period) return;
       g_lastScan = now;
       g_phase = g_wifiOn ? PH_WIFI_START : (g_probesOn ? PH_PROBE_ARM : (g_bleOn ? PH_BLE : PH_FINISH));
       break;

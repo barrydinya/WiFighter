@@ -9,7 +9,7 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, or connect to targets.
 
-## Status (v0.6.0)
+## Status (v0.7.0)
 
 - [x] Home screen — live pulse ring, radio flags, last-left line, DEV / IN / LEFT / HIGH / PRB tiles
 - [x] Menu — scan toggle, device list, leftovers, settings, allowlist, clear, about, home, with right-side hints
@@ -23,6 +23,9 @@ This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, 
 - [x] 6-slot MAC allowlist
 - [ ] Deep sleep between scans (UI stays awake so buttons keep working)
 - [ ] Full offline OUI database
+
+
+Home screen and menu live in `wf_ui.h`. Device table, leftover window, and NVS prefs live in `wf_core.h`. v0.6 documented those screens before the sources were in the tree; v0.7.0 is the first build that actually compiles them.
 
 ## Hardware
 
@@ -74,7 +77,7 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v0.6.0 live=6 left=1 high=2 probe=3 total=9
+[WF] v0.7.0 live=6 left=1 high=2 probe=3 total=9
 ```
 
 ## License
