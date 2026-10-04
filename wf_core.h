@@ -9,7 +9,7 @@
 #include <Preferences.h>
 #include "oui.h"
 
-#define FW_VERSION "0.7.0"
+#define FW_VERSION "0.8.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
@@ -98,6 +98,7 @@ static uint32_t g_lastScan = 0;
 static uint32_t g_phaseT = 0;
 static uint8_t g_probeCh = 0;
 static uint8_t g_probeCount = 0;
+static uint8_t g_hopCh = 1;
 
 static int g_menuIdx = 0;
 static int g_listIdx = 0;
@@ -114,6 +115,19 @@ static const char* tagName(uint8_t t) {
     case TAG_GOOGLE: return "Google";
     case TAG_TILE: return "Tile";
     default: return "";
+  }
+}
+
+static const char* phaseLabel() {
+  switch (g_phase) {
+    case PH_WIFI_START:
+    case PH_WIFI_POLL: return "AP scan";
+    case PH_PROBE_ARM:
+    case PH_PROBE_CH:
+    case PH_PROBE_DONE: return "probes";
+    case PH_BLE: return "BLE";
+    case PH_FINISH: return "score";
+    default: return g_scanning ? "idle" : "paused";
   }
 }
 
@@ -157,8 +171,9 @@ static void savePrefs() {
   g_prefs.putBool("scan", g_scanning);
   g_prefs.putUShort("left", g_leftWinSec);
   g_prefs.putUShort("per", g_scanPeriodSec);
+  g_prefs.putUChar("alwN", g_allowUsed);
+  g_prefs.putBytes("alw", g_allow, sizeof(g_allow));
   g_prefs.end();
-  saveAllow();
 }
 
 static void loadPrefs() {
@@ -263,8 +278,8 @@ static void markLeft() {
     if (g_devs[i].hits >= 8) high++;
     if (g_devs[i].kind & KIND_PROBE) probe++;
   }
-  Serial.printf("[WF] v%s live=%d left=%d high=%d probe=%d total=%d\n",
-                FW_VERSION, live, left, high, probe, total);
+  Serial.printf("[WF] v%s live=%d left=%d high=%d probe=%d total=%d ch=%u\n",
+                FW_VERSION, live, left, high, probe, total, g_hopCh);
 }
 
 static void clearDevs() {
@@ -280,7 +295,7 @@ static bool allowMac(const uint8_t* mac) {
   g_allowUsed++;
   int i = findDev(mac);
   if (i >= 0) g_devs[i].used = false;
-  saveAllow();
+  savePrefs();
   return true;
 }
 
@@ -314,16 +329,6 @@ static int countProbe() {
   return n;
 }
 
-static int nthUsed(int nth) {
-  int seen = 0;
-  for (int i = 0; i < MAX_DEV; i++) {
-    if (!g_devs[i].used) continue;
-    if (seen == nth) return i;
-    seen++;
-  }
-  return -1;
-}
-
 static bool isAlert(const Dev& d) {
   return d.used && (d.left || (d.kind & KIND_PROBE) || d.hits >= 8 || d.tag != TAG_NONE);
 }
@@ -334,15 +339,42 @@ static int countAlerts() {
   return n;
 }
 
-static int nthAlert(int nth) {
-  int seen = 0;
-  for (int i = 0; i < MAX_DEV; i++) {
-    if (!isAlert(g_devs[i])) continue;
-    if (seen == nth) return i;
-    seen++;
-  }
-  return -1;
+static int rankOf(int i, bool alertsOnly) {
+  const Dev& d = g_devs[i];
+  if (!d.used) return 100000;
+  if (alertsOnly && !isAlert(d)) return 100000;
+  int rank = d.left ? 0 : 1000;
+  if (d.kind & KIND_PROBE) rank -= 50;
+  rank -= d.rssi;
+  return rank;
 }
+
+static int nthSorted(int nth, bool alertsOnly) {
+  bool picked[MAX_DEV] = {false};
+  int chosen = -1;
+  for (int step = 0; step <= nth; step++) {
+    int pick = -1;
+    int pickRank = 1000000;
+    uint32_t pickMs = 0;
+    for (int i = 0; i < MAX_DEV; i++) {
+      if (picked[i]) continue;
+      int r = rankOf(i, alertsOnly);
+      if (r >= 100000) continue;
+      if (r < pickRank || (r == pickRank && g_devs[i].lastMs > pickMs)) {
+        pick = i;
+        pickRank = r;
+        pickMs = g_devs[i].lastMs;
+      }
+    }
+    if (pick < 0) return -1;
+    picked[pick] = true;
+    chosen = pick;
+  }
+  return chosen;
+}
+
+static int nthUsed(int nth) { return nthSorted(nth, false); }
+static int nthAlert(int nth) { return nthSorted(nth, true); }
 
 static char kindMark(uint8_t k) {
   bool w = k & KIND_WIFI;
@@ -353,4 +385,11 @@ static char kindMark(uint8_t k) {
   if (b) return 'B';
   if (w) return 'W';
   return '?';
+}
+
+static void clip(const char* in, char* out, size_t n) {
+  if (!in) in = "";
+  size_t i = 0;
+  for (; in[i] && i + 1 < n; i++) out[i] = in[i];
+  out[i] = 0;
 }

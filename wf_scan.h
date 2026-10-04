@@ -1,4 +1,7 @@
 #pragma once
+// Passive Wi-Fi AP scan, probe-request hop, BLE advert scan.
+// No association, no deauth, no injection.
+
 static void IRAM_ATTR sniffCb(void* buf, wifi_promiscuous_pkt_type_t type) {
   if (type != WIFI_PKT_MGMT) return;
   const wifi_promiscuous_pkt_t* pp = (const wifi_promiscuous_pkt_t*)buf;
@@ -46,7 +49,6 @@ static void scanBle() {
   scan->setActiveScan(true);
   scan->setInterval(134);
   scan->setWindow(120);
-  // NimBLE-Arduino 1.4: start() returns bool; results come from getResults().
   if (!scan->start(BLE_SCAN_MS / 1000, false)) {
     scan->clearResults();
     return;
@@ -118,17 +120,19 @@ static void tickScan() {
         esp_wifi_set_promiscuous(true);
       }
       g_probeCh = 0;
+      g_hopCh = chans[0];
       esp_wifi_set_channel(chans[0], WIFI_SECOND_CHAN_NONE);
       g_phaseT = now;
       g_phase = PH_PROBE_CH;
       break;
     case PH_PROBE_CH:
-      if (now - g_phaseT < 280) return;
+      if (now - g_phaseT < 700) return;
       g_probeCh++;
       if (g_probeCh < 3) {
-        esp_wifi_set_channel(chans[g_probeCh], WIFI_SECOND_CHAN_NONE);
+        g_hopCh = chans[g_probeCh];
+        esp_wifi_set_channel(g_hopCh, WIFI_SECOND_CHAN_NONE);
         char st[16];
-        snprintf(st, sizeof(st), "probe ch%d", chans[g_probeCh]);
+        snprintf(st, sizeof(st), "probe ch%u", g_hopCh);
         strncpy(g_status, st, sizeof(g_status) - 1);
         g_phaseT = now;
         return;
