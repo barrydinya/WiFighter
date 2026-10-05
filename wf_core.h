@@ -9,12 +9,12 @@
 #include <Preferences.h>
 #include "oui.h"
 
-#define FW_VERSION "0.8.0"
+#define FW_VERSION "0.9.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
 #define SCAN_PERIOD_MS 8000
-#define BLE_SCAN_MS 2500
+#define BLE_SCAN_MS 2000
 
 enum Screen : uint8_t {
   SCR_HOME = 0,
@@ -23,7 +23,8 @@ enum Screen : uint8_t {
   SCR_ALERTS,
   SCR_DETAIL,
   SCR_SETTINGS,
-  SCR_ABOUT
+  SCR_ABOUT,
+  SCR_CONFIRM
 };
 
 enum Kind : uint8_t {
@@ -99,6 +100,8 @@ static uint32_t g_phaseT = 0;
 static uint8_t g_probeCh = 0;
 static uint8_t g_probeCount = 0;
 static uint8_t g_hopCh = 1;
+static bool g_bleStarted = false;
+static volatile bool g_bleReady = false;
 
 static int g_menuIdx = 0;
 static int g_listIdx = 0;
@@ -106,7 +109,9 @@ static int g_listScroll = 0;
 static int g_setIdx = 0;
 static int g_detailIdx = -1;
 static int g_lastLeft = -1;
+static int g_confirmKind = 0;
 static uint32_t g_pulse = 0;
+static bool g_uiForce = true;
 
 static const char* tagName(uint8_t t) {
   switch (t) {
@@ -154,13 +159,6 @@ static const char* ouiLookup(const uint8_t* mac) {
   }
   if (mac[0] & 0x02) return "local";
   return "unknown";
-}
-
-static void saveAllow() {
-  g_prefs.begin("wf", false);
-  g_prefs.putUChar("alwN", g_allowUsed);
-  g_prefs.putBytes("alw", g_allow, sizeof(g_allow));
-  g_prefs.end();
 }
 
 static void savePrefs() {
@@ -295,6 +293,7 @@ static bool allowMac(const uint8_t* mac) {
   g_allowUsed++;
   int i = findDev(mac);
   if (i >= 0) g_devs[i].used = false;
+  if (g_lastLeft == i) g_lastLeft = -1;
   savePrefs();
   return true;
 }
@@ -392,4 +391,12 @@ static void clip(const char* in, char* out, size_t n) {
   size_t i = 0;
   for (; in[i] && i + 1 < n; i++) out[i] = in[i];
   out[i] = 0;
+}
+
+static int secondsUntilScan() {
+  if (!g_scanning || g_phase != PH_WAIT) return 0;
+  uint32_t period = (uint32_t)g_scanPeriodSec * 1000UL;
+  uint32_t elapsed = millis() - g_lastScan;
+  if (elapsed >= period) return 0;
+  return (int)((period - elapsed) / 1000UL);
 }

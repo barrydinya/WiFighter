@@ -1,6 +1,6 @@
 #pragma once
 // Passive Wi-Fi AP scan, probe-request hop, BLE advert scan.
-// No association, no deauth, no injection.
+// No association, no deauth, no injection, no GATT connect.
 
 static void IRAM_ATTR sniffCb(void* buf, wifi_promiscuous_pkt_type_t type) {
   if (type != WIFI_PKT_MGMT) return;
@@ -41,18 +41,13 @@ static void IRAM_ATTR sniffCb(void* buf, wifi_promiscuous_pkt_type_t type) {
   portEXIT_CRITICAL_ISR(&g_probeMux);
 }
 
-static void scanBle() {
-  if (!g_bleOn) return;
-  strncpy(g_status, "BLE scan", sizeof(g_status) - 1);
+static void onBleDone(NimBLEScanResults) {
+  g_bleReady = true;
+}
+
+static void harvestBle() {
   NimBLEScan* scan = NimBLEDevice::getScan();
   if (!scan) return;
-  scan->setActiveScan(true);
-  scan->setInterval(134);
-  scan->setWindow(120);
-  if (!scan->start(BLE_SCAN_MS / 1000, false)) {
-    scan->clearResults();
-    return;
-  }
   NimBLEScanResults res = scan->getResults();
   int n = res.getCount();
   for (int i = 0; i < n; i++) {
@@ -70,8 +65,13 @@ static void scanBle() {
 
 static void tickScan() {
   if (!g_scanning) {
-    if (g_phase != PH_WAIT) {
+    if (g_phase != PH_WAIT || g_bleStarted) {
       esp_wifi_set_promiscuous(false);
+      if (g_bleStarted) {
+        NimBLEDevice::getScan()->stop();
+        g_bleStarted = false;
+        g_bleReady = false;
+      }
       g_phase = PH_WAIT;
     }
     return;
@@ -150,13 +150,33 @@ static void tickScan() {
       g_phase = g_bleOn ? PH_BLE : PH_FINISH;
       break;
     case PH_BLE:
-      scanBle();
+      if (!g_bleStarted) {
+        strncpy(g_status, "BLE scan", sizeof(g_status) - 1);
+        NimBLEScan* scan = NimBLEDevice::getScan();
+        if (!scan) { g_phase = PH_FINISH; break; }
+        scan->setActiveScan(false);
+        scan->setInterval(160);
+        scan->setWindow(80);
+        g_bleReady = false;
+        if (!scan->start(BLE_SCAN_MS / 1000, onBleDone, false)) {
+          g_phase = PH_FINISH;
+          break;
+        }
+        g_bleStarted = true;
+        g_phaseT = now;
+        return;
+      }
+      if (!g_bleReady && now - g_phaseT < BLE_SCAN_MS + 1500) return;
+      harvestBle();
+      g_bleStarted = false;
+      g_bleReady = false;
       g_phase = PH_FINISH;
       break;
     case PH_FINISH:
       markLeft();
       strncpy(g_status, "watching", sizeof(g_status) - 1);
       g_phase = PH_WAIT;
+      g_lastScan = millis();
       break;
   }
 }

@@ -5,6 +5,7 @@
 #include "wf_core.h"
 #include "wf_scan.h"
 #include "wf_ui.h"
+
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
@@ -25,7 +26,8 @@ void setup() {
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
   strncpy(g_status, "boot", sizeof(g_status) - 1);
-  drawHome();
+  g_uiForce = true;
+  drawHome(true);
   Serial.printf("[WF] boot v%s\n", FW_VERSION);
 }
 
@@ -38,24 +40,31 @@ void loop() {
     if (!g_holdConsumed && millis() - g_btnBDown > 650 && g_screen != SCR_HOME) {
       g_screen = SCR_HOME;
       g_holdConsumed = true;
+      g_uiForce = true;
       dirty = true;
     }
   } else {
     if (g_btnBDown && !g_holdConsumed && M5.BtnB.wasReleased()) {
       handleB();
+      g_uiForce = true;
       dirty = true;
     }
     g_btnBDown = 0;
     g_holdConsumed = false;
   }
 
-  if (M5.BtnA.wasPressed()) { handleA(); dirty = true; }
+  if (M5.BtnA.wasPressed()) {
+    handleA();
+    g_uiForce = true;
+    dirty = true;
+  }
 
   tickScan();
 
   static uint32_t lastPaint = 0;
-  if (dirty || millis() - lastPaint > 500) {
-    render();
+  if (dirty || millis() - lastPaint > 400) {
+    render(dirty || g_uiForce);
+    g_uiForce = false;
     lastPaint = millis();
   }
   delay(15);
