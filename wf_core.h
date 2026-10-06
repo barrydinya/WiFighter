@@ -9,7 +9,7 @@
 #include <Preferences.h>
 #include "oui.h"
 
-#define FW_VERSION "0.9.0"
+#define FW_VERSION "1.0.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
@@ -21,6 +21,7 @@ enum Screen : uint8_t {
   SCR_MENU,
   SCR_DEVICES,
   SCR_ALERTS,
+  SCR_ALLOW,
   SCR_DETAIL,
   SCR_SETTINGS,
   SCR_ABOUT,
@@ -296,6 +297,15 @@ static bool allowMac(const uint8_t* mac) {
   if (g_lastLeft == i) g_lastLeft = -1;
   savePrefs();
   return true;
+}
+
+
+static void removeAllow(int idx) {
+  if (idx < 0 || idx >= g_allowUsed) return;
+  for (int i = idx; i < g_allowUsed - 1; i++) memcpy(g_allow[i], g_allow[i + 1], 6);
+  g_allowUsed--;
+  memset(g_allow[g_allowUsed], 0, 6);
+  savePrefs();
 }
 
 static int countUsed() {

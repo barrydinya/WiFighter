@@ -1,5 +1,6 @@
 #pragma once
-// WiFighter UI — home dashboard and menu for 240x135 landscape.
+// WiFighter UI — 240x135 landscape home dashboard and menu.
+// Passive display only. Authorized networks and devices only.
 
 #include "wf_core.h"
 
@@ -21,8 +22,8 @@ static const MenuItem MENU_ITEMS[] = {
   {"Scan", "Arm or pause the radio cycle"},
   {"Devices", "APs, BLE, and probe stations"},
   {"Alerts", "Left, probes, tags, high hits"},
+  {"Allowlist", "Hidden MACs saved in NVS"},
   {"Settings", "Radios, period, left window"},
-  {"Allow last", "Hide last opened or left MAC"},
   {"Clear table", "Drop the in-memory device table"},
   {"About", "Build and authorized-use note"},
   {"Home", "Return to the dashboard"}
@@ -59,7 +60,7 @@ static void header(const char* title, uint16_t accent) {
   M5.Display.print(title);
   int bat = M5.Power.getBatteryLevel();
   if (bat < 0) bat = 0;
-  char b[8];
+  char b[12];
   snprintf(b, sizeof(b), "%d%%", bat);
   M5.Display.setTextColor(bat < 20 ? COL_RED : COL_DIM, 0x0000);
   int bw = M5.Display.textWidth(b);
@@ -69,29 +70,28 @@ static void header(const char* title, uint16_t accent) {
 
 static void drawSplash() {
   M5.Display.fillScreen(COL_BG);
+  M5.Display.fillRect(0, 0, 240, 4, COL_AMBER);
   M5.Display.setTextColor(COL_AMBER, COL_BG);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(28, 28);
+  M5.Display.setCursor(28, 32);
   M5.Display.print("WIFIGHTER");
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(COL_CYAN, COL_BG);
-  M5.Display.setCursor(92, 56);
+  M5.Display.setCursor(92, 58);
   M5.Display.printf("v%s", FW_VERSION);
   M5.Display.setTextColor(COL_DIM, COL_BG);
-  M5.Display.setCursor(36, 78);
-  M5.Display.print("leftover watch");
-  M5.Display.setCursor(36, 96);
-  M5.Display.print("A scan   B menu");
-  delay(700);
+  M5.Display.setCursor(28, 78);
+  M5.Display.print("leftover watch  A scan  B menu");
+  delay(650);
   M5.Display.setTextSize(1);
 }
 
 static void drawRing(int cx, int cy) {
-  M5.Display.fillRect(cx - 22, cy - 22, 44, 44, COL_BG);
+  M5.Display.fillRect(cx - 24, cy - 24, 48, 48, COL_BG);
   uint32_t t = (millis() / 80) % 24;
   uint16_t col = g_scanning ? COL_CYAN : COL_DIM;
   M5.Display.drawCircle(cx, cy, 18, col);
-  M5.Display.drawCircle(cx, cy, 13, COL_PANEL);
+  M5.Display.drawCircle(cx, cy, 12, COL_PANEL);
   int ang = (int)((t * 15) % 360);
   float r = ang * 0.0174533f;
   int x = cx + (int)(cosf(r) * 18);
@@ -114,17 +114,10 @@ static void stat(int x, int w, const char* label, int value, uint16_t col) {
   M5.Display.printf("%d", value);
 }
 
-static void flag(int x, const char* onTxt, const char* offTxt, bool on, uint16_t col) {
-  M5.Display.fillRect(x, 20, 32, 10, COL_BG);
-  M5.Display.setTextColor(on ? col : COL_DIM, COL_BG);
-  M5.Display.setCursor(x, 22);
-  M5.Display.print(on ? onTxt : offTxt);
-}
-
 static void paintLastLeft() {
-  M5.Display.fillRoundRect(56, 52, 178, 38, 3, COL_PANEL);
+  M5.Display.fillRoundRect(56, 50, 180, 42, 3, COL_PANEL);
   M5.Display.setTextColor(COL_DIM, COL_PANEL);
-  M5.Display.setCursor(62, 54);
+  M5.Display.setCursor(62, 53);
   M5.Display.print("LAST LEFT");
   if (g_lastLeft >= 0 && g_devs[g_lastLeft].used && g_devs[g_lastLeft].left) {
     Dev& d = g_devs[g_lastLeft];
@@ -136,28 +129,35 @@ static void paintLastLeft() {
     M5.Display.setCursor(62, 66);
     M5.Display.printf("%c %s", kindMark(d.kind), label);
     M5.Display.setTextColor(COL_RED, COL_PANEL);
-    M5.Display.setCursor(150, 66);
-    M5.Display.print(mac + 9);
+    M5.Display.setCursor(62, 78);
+    M5.Display.print(mac);
   } else {
     M5.Display.setTextColor(COL_DIM, COL_PANEL);
-    M5.Display.setCursor(62, 66);
-    M5.Display.printf("none  window %us", (unsigned)g_leftWinSec);
+    M5.Display.setCursor(62, 70);
+    M5.Display.printf("none   window %us", (unsigned)g_leftWinSec);
   }
 }
 
 static void paintHomeLive() {
   header("WIFIGHTER", COL_AMBER);
-  drawRing(30, 58);
-  flag(58, "WIFI", "wifi", g_wifiOn, COL_GREEN);
-  flag(92, "BLE", "ble", g_bleOn, COL_CYAN);
-  flag(124, "PRB", "prb", g_probesOn, COL_AMBER);
+  drawRing(28, 62);
 
-  M5.Display.fillRect(156, 20, 80, 28, COL_BG);
+  M5.Display.fillRect(56, 18, 180, 30, COL_BG);
+  M5.Display.setTextColor(g_wifiOn ? COL_GREEN : COL_DIM, COL_BG);
+  M5.Display.setCursor(58, 20);
+  M5.Display.print(g_wifiOn ? "WIFI" : "wifi");
+  M5.Display.setTextColor(g_bleOn ? COL_CYAN : COL_DIM, COL_BG);
+  M5.Display.setCursor(96, 20);
+  M5.Display.print(g_bleOn ? "BLE" : "ble");
+  M5.Display.setTextColor(g_probesOn ? COL_AMBER : COL_DIM, COL_BG);
+  M5.Display.setCursor(128, 20);
+  M5.Display.print(g_probesOn ? "PRB" : "prb");
+
   M5.Display.setTextColor(COL_WHITE, COL_BG);
-  M5.Display.setCursor(156, 22);
+  M5.Display.setCursor(168, 20);
   M5.Display.print(g_scanning ? g_status : "paused");
   M5.Display.setTextColor(COL_DIM, COL_BG);
-  M5.Display.setCursor(58, 38);
+  M5.Display.setCursor(58, 34);
   int eta = secondsUntilScan();
   if (!g_scanning) M5.Display.print("scan paused");
   else if (g_phase == PH_WAIT) M5.Display.printf("next %ds", eta);
@@ -179,6 +179,14 @@ static void drawHome(bool full) {
   paintHomeLive();
 }
 
+static void menuValue(int i, char* out, size_t n) {
+  if (i == 0) snprintf(out, n, "%s", g_scanning ? "ON" : "OFF");
+  else if (i == 1) snprintf(out, n, "%d", countUsed());
+  else if (i == 2) snprintf(out, n, "%d", countAlerts());
+  else if (i == 3) snprintf(out, n, "%u", (unsigned)g_allowUsed);
+  else out[0] = 0;
+}
+
 static void drawMenu() {
   M5.Display.fillScreen(COL_BG);
   header("MENU", COL_CYAN);
@@ -195,15 +203,21 @@ static void drawMenu() {
     if (on) M5.Display.fillRect(4, y, 3, 18, COL_AMBER);
     M5.Display.setTextColor(on ? COL_AMBER : COL_WHITE, on ? COL_PANEL : COL_BG);
     M5.Display.setCursor(12, y + 5);
-    if (i == 0) M5.Display.printf("Scan            %s", g_scanning ? "ON" : "OFF");
-    else if (i == 1) M5.Display.printf("Devices          %d", countUsed());
-    else if (i == 2) M5.Display.printf("Alerts           %d", countAlerts());
-    else M5.Display.print(MENU_ITEMS[i].label);
+    M5.Display.print(MENU_ITEMS[i].label);
+    char val[8];
+    menuValue(i, val, sizeof(val));
+    if (val[0]) {
+      M5.Display.setTextColor(on ? COL_CYAN : COL_DIM, on ? COL_PANEL : COL_BG);
+      int vw = M5.Display.textWidth(val);
+      M5.Display.setCursor(228 - vw, y + 5);
+      M5.Display.print(val);
+    }
   }
+  M5.Display.fillRect(0, 98, 240, 22, COL_BG);
   M5.Display.setTextColor(COL_DIM, COL_BG);
-  M5.Display.setCursor(6, 100);
+  M5.Display.setCursor(6, 102);
   M5.Display.print(MENU_ITEMS[g_menuIdx].hint);
-  M5.Display.setCursor(180, 100);
+  M5.Display.setCursor(200, 102);
   M5.Display.printf("%d/%d", g_menuIdx + 1, MENU_N);
   footer("A select", "B next");
 }
@@ -272,6 +286,35 @@ static void drawAlerts() {
     }
   }
   footer("A detail", "B scroll");
+}
+
+static void drawAllow() {
+  M5.Display.fillScreen(COL_BG);
+  header("ALLOWLIST", COL_CYAN);
+  if (g_allowUsed == 0) {
+    M5.Display.setTextColor(COL_DIM, COL_BG);
+    M5.Display.setCursor(8, 40);
+    M5.Display.print("empty");
+    M5.Display.setCursor(8, 56);
+    M5.Display.print("Allow from detail or menu");
+  } else {
+    if (g_listIdx >= g_allowUsed) g_listIdx = g_allowUsed - 1;
+    if (g_listIdx < g_listScroll) g_listScroll = g_listIdx;
+    if (g_listIdx >= g_listScroll + 6) g_listScroll = g_listIdx - 5;
+    for (int row = 0; row < 6; row++) {
+      int i = g_listScroll + row;
+      if (i >= g_allowUsed) break;
+      int y = 18 + row * 16;
+      bool on = (i == g_listIdx);
+      char mac[18];
+      macFmt(g_allow[i], mac, sizeof(mac));
+      M5.Display.fillRect(0, y, 240, 16, on ? COL_PANEL : COL_BG);
+      M5.Display.setTextColor(on ? COL_AMBER : COL_WHITE, on ? COL_PANEL : COL_BG);
+      M5.Display.setCursor(4, y + 4);
+      M5.Display.printf("%d  %s", i + 1, mac);
+    }
+  }
+  footer("A remove", "B scroll");
 }
 
 static void drawDetail() {
@@ -379,6 +422,7 @@ static void render(bool force) {
     case SCR_MENU: drawMenu(); break;
     case SCR_DEVICES: drawDevices(); break;
     case SCR_ALERTS: drawAlerts(); break;
+    case SCR_ALLOW: drawAllow(); break;
     case SCR_DETAIL: drawDetail(); break;
     case SCR_SETTINGS: drawSettings(); break;
     case SCR_ABOUT: drawAbout(); break;
@@ -410,11 +454,8 @@ static void handleA() {
           break;
         case 1: openList(SCR_DEVICES); break;
         case 2: openList(SCR_ALERTS); break;
-        case 3: g_setIdx = 0; g_screen = SCR_SETTINGS; break;
-        case 4:
-          if (g_detailIdx >= 0 && g_devs[g_detailIdx].used) allowMac(g_devs[g_detailIdx].mac);
-          else if (g_lastLeft >= 0 && g_devs[g_lastLeft].used) allowMac(g_devs[g_lastLeft].mac);
-          break;
+        case 3: openList(SCR_ALLOW); break;
+        case 4: g_setIdx = 0; g_screen = SCR_SETTINGS; break;
         case 5:
           g_confirmKind = 1;
           g_screen = SCR_CONFIRM;
@@ -437,6 +478,11 @@ static void handleA() {
       g_screen = SCR_DETAIL;
       break;
     }
+    case SCR_ALLOW:
+      if (g_allowUsed == 0) { g_screen = SCR_MENU; break; }
+      removeAllow(g_listIdx);
+      if (g_listIdx >= g_allowUsed) g_listIdx = g_allowUsed > 0 ? g_allowUsed - 1 : 0;
+      break;
     case SCR_DETAIL:
       g_screen = SCR_MENU;
       break;
@@ -482,6 +528,9 @@ static void handleB() {
       if (n > 0) g_listIdx = (g_listIdx + 1) % n;
       break;
     }
+    case SCR_ALLOW:
+      if (g_allowUsed > 0) g_listIdx = (g_listIdx + 1) % g_allowUsed;
+      break;
     case SCR_DETAIL:
       if (g_detailIdx >= 0 && g_devs[g_detailIdx].used) allowMac(g_devs[g_detailIdx].mac);
       break;

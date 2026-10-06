@@ -9,10 +9,11 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, connect to targets, or read GATT characteristics.
 
-## Status (v0.9.0)
+## Status (v1.0.0)
 
 - [x] Home screen — pulse ring, radio flags, next-scan countdown, last-left card, DEV / IN / LEFT / HIGH / PRB tiles
-- [x] Menu — scan, devices, alerts, settings, allow last MAC, clear (confirm), about, home
+- [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home
+- [x] Allowlist screen — view and remove saved MACs
 - [x] Live home paint so the dashboard does not blank every refresh
 - [x] Non-blocking BLE advert scan so Home and Menu stay responsive
 - [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, randomized-MAC flag, last-seen)
@@ -59,10 +60,11 @@ pio run -e m5stick-c-plus2 -t upload
 ## Screens
 
 - **Home** — pulse ring, counters, last device that went LEFT, seconds until the next cycle. A toggles scan. B opens menu.
-- **Menu** — scan, devices, alerts, settings, allow last opened MAC, clear, about, home
+- **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home. Live counts sit on the right.
 - **Devices** — `W` AP, `B` BLE, `P` probe-only station, `*` both radios. Left rows sort first.
 - **Alerts** — LEFT, probes, high persist, or tracker tag
-- **Detail** — full MAC, remembered SSID, vendor, tag, randomized-MAC note
+- **Allowlist** — saved MACs. A removes the selected row.
+- **Detail** — full MAC, remembered SSID, vendor, tag, randomized-MAC note. B allowlists it.
 - **Settings** — radios, probe sniff, period, left window, save
 - **Confirm** — clear table asks before wiping RAM
 
@@ -78,7 +80,7 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v0.9.0 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] v1.0.0 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## License
