@@ -9,7 +9,7 @@
 #include <Preferences.h>
 #include "oui.h"
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6

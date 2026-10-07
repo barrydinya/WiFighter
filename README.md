@@ -9,9 +9,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, connect to targets, or read GATT characteristics.
 
-## Status (v1.0.0)
+## Status (v1.1.0)
 
-- [x] Home screen — pulse ring, radio flags, next-scan countdown, last-left card, DEV / IN / LEFT / HIGH / PRB tiles
+- [x] Home screen — sweep ring, radio flags, cycle bar, last-left card with age, DEV / IN / LEFT / HIGH / PRB tiles
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home
 - [x] Allowlist screen — view and remove saved MACs
 - [x] Live home paint so the dashboard does not blank every refresh
@@ -59,8 +59,8 @@ pio run -e m5stick-c-plus2 -t upload
 
 ## Screens
 
-- **Home** — pulse ring, counters, last device that went LEFT, seconds until the next cycle. A toggles scan. B opens menu.
-- **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home. Live counts sit on the right.
+- **Home** — sweep ring, counters, cycle bar, last device that went LEFT and how long ago. A toggles scan. B opens menu.
+- **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home. Glyph + live counts. A opens, B next.
 - **Devices** — `W` AP, `B` BLE, `P` probe-only station, `*` both radios. Left rows sort first.
 - **Alerts** — LEFT, probes, high persist, or tracker tag
 - **Allowlist** — saved MACs. A removes the selected row.
@@ -80,7 +80,7 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v1.0.0 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] v1.1.0 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## License
