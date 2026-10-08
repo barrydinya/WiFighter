@@ -9,10 +9,10 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, connect to targets, or read GATT characteristics.
 
-## Status (v1.1.0)
+## Status (v1.2.0)
 
-- [x] Home screen — sweep ring, radio flags, cycle bar, last-left card with age, DEV / IN / LEFT / HIGH / PRB tiles
-- [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home
+- [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles
+- [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
 - [x] Allowlist screen — view and remove saved MACs
 - [x] Live home paint so the dashboard does not blank every refresh
 - [x] Non-blocking BLE advert scan so Home and Menu stay responsive
@@ -80,7 +80,7 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v1.1.0 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] v1.2.0 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## License

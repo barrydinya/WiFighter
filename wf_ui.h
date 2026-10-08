@@ -82,34 +82,43 @@ static void drawSplash() {
   M5.Display.fillRect(0, 0, 240, 4, COL_AMBER);
   M5.Display.setTextColor(COL_AMBER, COL_BG);
   M5.Display.setTextSize(2);
-  M5.Display.setCursor(28, 28);
+  M5.Display.setCursor(28, 24);
   M5.Display.print("WIFIGHTER");
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(COL_CYAN, COL_BG);
-  M5.Display.setCursor(92, 54);
+  M5.Display.setCursor(96, 50);
   M5.Display.printf("v%s", FW_VERSION);
   M5.Display.setTextColor(COL_WHITE, COL_BG);
-  M5.Display.setCursor(36, 74);
+  M5.Display.setCursor(48, 68);
   M5.Display.print("leftover watch");
   M5.Display.setTextColor(COL_DIM, COL_BG);
-  M5.Display.setCursor(28, 96);
+  M5.Display.setCursor(18, 90);
+  M5.Display.print("Home dashboard  +  menu");
+  M5.Display.setCursor(22, 106);
   M5.Display.print("A scan    B menu    hold B home");
   delay(700);
   M5.Display.setTextSize(1);
 }
 
 static void drawRing(int cx, int cy) {
-  M5.Display.fillRect(cx - 26, cy - 26, 52, 52, COL_BG);
+  M5.Display.fillRect(cx - 28, cy - 28, 56, 56, COL_BG);
   uint32_t t = (millis() / 90) % 16;
   static const int8_t SX[16] = {18, 16, 12, 6, 0, -6, -12, -16, -18, -16, -12, -6, 0, 6, 12, 16};
   static const int8_t SY[16] = {0, 6, 12, 16, 18, 16, 12, 6, 0, -6, -12, -16, -18, -16, -12, -6};
   uint16_t col = g_scanning ? COL_CYAN : COL_DIM;
-  M5.Display.drawCircle(cx, cy, 20, col);
-  M5.Display.drawCircle(cx, cy, 13, COL_PANEL);
+  M5.Display.drawCircle(cx, cy, 22, col);
+  M5.Display.drawCircle(cx, cy, 14, COL_PANEL);
   if (g_scanning) {
     M5.Display.drawLine(cx, cy, cx + SX[t], cy + SY[t], COL_AMBER);
     M5.Display.fillCircle(cx + SX[t], cy + SY[t], 2, COL_AMBER);
   }
+  // Phase ticks: AP (top), probes (right), BLE (bottom).
+  uint16_t ap = (g_phase == PH_WIFI_START || g_phase == PH_WIFI_POLL) ? COL_GREEN : COL_PANEL;
+  uint16_t pr = (g_phase == PH_PROBE_ARM || g_phase == PH_PROBE_CH || g_phase == PH_PROBE_DONE) ? COL_AMBER : COL_PANEL;
+  uint16_t bl = (g_phase == PH_BLE) ? COL_CYAN : COL_PANEL;
+  M5.Display.fillCircle(cx, cy - 22, 2, ap);
+  M5.Display.fillCircle(cx + 22, cy, 2, pr);
+  M5.Display.fillCircle(cx, cy + 22, 2, bl);
   M5.Display.setTextColor(g_scanning ? COL_WHITE : COL_DIM, COL_BG);
   const char* st = g_scanning ? "ON" : "OFF";
   int tw = M5.Display.textWidth(st);
@@ -220,15 +229,20 @@ static void menuValue(int i, char* out, size_t n) {
   else out[0] = 0;
 }
 
-static void drawMenu() {
-  M5.Display.fillScreen(COL_BG);
-  char title[20];
-  snprintf(title, sizeof(title), "MENU  %d/%d", g_menuIdx + 1, MENU_N);
-  header(title, COL_CYAN);
+static int menuStart() {
   int start = 0;
   if (g_menuIdx > 2) start = g_menuIdx - 2;
   if (start > MENU_N - MENU_ROWS) start = MENU_N - MENU_ROWS;
   if (start < 0) start = 0;
+  return start;
+}
+
+static void drawMenu() {
+  M5.Display.fillScreen(COL_BG);
+  char title[24];
+  snprintf(title, sizeof(title), "MENU  %d/%d", g_menuIdx + 1, MENU_N);
+  header(title, COL_CYAN);
+  int start = menuStart();
   for (int row = 0; row < MENU_ROWS; row++) {
     int i = start + row;
     if (i >= MENU_N) break;
@@ -254,8 +268,11 @@ static void drawMenu() {
   }
   M5.Display.fillRect(0, 98, 240, 22, COL_BG);
   M5.Display.setTextColor(COL_DIM, COL_BG);
-  M5.Display.setCursor(6, 104);
+  M5.Display.setCursor(6, 102);
   M5.Display.print(MENU_ITEMS[g_menuIdx].hint);
+  M5.Display.setCursor(6, 112);
+  M5.Display.setTextColor(COL_CYAN, COL_BG);
+  M5.Display.print("hold B home");
   footer("A open", "B next");
 }
 
@@ -333,7 +350,7 @@ static void drawAllow() {
     M5.Display.setCursor(8, 40);
     M5.Display.print("empty");
     M5.Display.setCursor(8, 56);
-    M5.Display.print("Allow from detail or menu");
+    M5.Display.print("Allow from detail (B)");
   } else {
     if (g_listIdx >= g_allowUsed) g_listIdx = g_allowUsed - 1;
     if (g_listIdx < g_listScroll) g_listScroll = g_listIdx;
@@ -455,9 +472,13 @@ static void render(bool force) {
     g_painted = SCR_HOME;
     return;
   }
+  if (g_screen == SCR_MENU) {
+    drawMenu();
+    g_painted = SCR_MENU;
+    return;
+  }
   if (!entered) return;
   switch (g_screen) {
-    case SCR_MENU: drawMenu(); break;
     case SCR_DEVICES: drawDevices(); break;
     case SCR_ALERTS: drawAlerts(); break;
     case SCR_ALLOW: drawAllow(); break;
