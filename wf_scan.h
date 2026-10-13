@@ -55,7 +55,7 @@ static void harvestBle() {
     if (!d) continue;
     NimBLEAddress addr = d->getAddress();
     uint8_t mac[6];
-    memcpy(mac, addr.getNative(), 6);
+    bleMacNative(addr, mac);
     char nm[18] = {0};
     uint8_t tag = bleTag(d, nm);
     upsert(mac, nm, (int8_t)d->getRSSI(), KIND_BLE, nullptr, tag);
@@ -175,6 +175,8 @@ static void tickScan() {
     case PH_FINISH:
       markLeft();
       strncpy(g_status, "watching", sizeof(g_status) - 1);
+      g_status[sizeof(g_status) - 1] = 0;
+      logCycle();
       g_phase = PH_WAIT;
       g_lastScan = millis();
       break;

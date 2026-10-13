@@ -96,7 +96,7 @@ static void drawSplash() {
   M5.Display.print("Home dashboard  +  menu");
   M5.Display.setCursor(22, 106);
   M5.Display.print("A scan    B menu    hold B home");
-  delay(700);
+  delay(500);
   M5.Display.setTextSize(1);
 }
 
@@ -203,6 +203,16 @@ static void paintHomeLive() {
   if (!g_scanning) M5.Display.print("paused");
   else if (g_phase == PH_WAIT) M5.Display.printf("next %ds", secondsUntilScan());
   else M5.Display.printf("%s", phaseLabel());
+  {
+    uint32_t up = (millis() - g_bootMs) / 1000UL;
+    char upbuf[12];
+    if (up < 3600) snprintf(upbuf, sizeof(upbuf), "%lum%02lu", (unsigned long)(up / 60), (unsigned long)(up % 60));
+    else snprintf(upbuf, sizeof(upbuf), "%luh%02lu", (unsigned long)(up / 3600), (unsigned long)((up / 60) % 60));
+    M5.Display.setTextColor(COL_DIM, COL_BG);
+    int uw = M5.Display.textWidth(upbuf);
+    M5.Display.setCursor(236 - uw, 20);
+    M5.Display.print(upbuf);
+  }
 
   paintLastLeft();
   paintCycleBar();

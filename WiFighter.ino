@@ -26,6 +26,9 @@ void setup() {
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
   strncpy(g_status, "boot", sizeof(g_status) - 1);
+  g_status[sizeof(g_status) - 1] = 0;
+  // First cycle ~1.5s after splash so the UI paints once first.
+  g_lastScan = millis() - ((uint32_t)g_scanPeriodSec * 1000UL) + 1500UL;
   g_uiForce = true;
   drawHome(true);
   Serial.printf("[WF] boot v%s\n", FW_VERSION);
