@@ -9,24 +9,23 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, connect to targets, or read GATT characteristics.
 
-## Status (v1.2.0)
+## Status (v1.3.1)
 
-- [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles
+- [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
 - [x] Allowlist screen — view and remove saved MACs
 - [x] Live home paint so the dashboard does not blank every refresh
-- [x] Non-blocking BLE advert scan so Home and Menu stay responsive
+- [x] Non-blocking scan state machine (Wi-Fi AP → probe hop 1/6/11 → BLE) so Home and Menu stay responsive
 - [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, randomized-MAC flag, last-seen)
 - [x] Alerts view, left-first sort
-- [x] Settings saved to NVS
+- [x] Settings and allowlist saved to NVS
 - [x] Hold BtnB to jump Home
-- [x] Passive probe-request hop on channels 1 / 6 / 11 (700 ms dwell)
 - [x] BLE company-ID tags (Apple, Samsung, Google) and Tile name heuristic
 - [x] 6-slot MAC allowlist
 - [ ] Deep sleep between scans (UI stays awake so buttons keep working)
 - [ ] Full offline OUI database
 
-Home screen and menu live in `wf_ui.h`. Device table, leftover window, and NVS prefs live in `wf_core.h`.
+Home screen and menu live in `wf_ui.h`. Device table, leftover window, and NVS prefs live in `wf_core.h`. Scan phases live in `wf_scan.h`.
 
 ## Hardware
 
@@ -46,7 +45,7 @@ pio run -e m5stick-c-plus2 -t upload
 ### Arduino IDE
 
 1. Board: `M5Stick-C-Plus` or `M5StickC Plus2`
-2. Libraries: `M5Unified`, `NimBLE-Arduino`
+2. Libraries: `M5Unified`, `NimBLE-Arduino` (1.4.x)
 3. Open `WiFighter.ino` and upload
 
 ## Controls
@@ -59,7 +58,7 @@ pio run -e m5stick-c-plus2 -t upload
 
 ## Screens
 
-- **Home** — sweep ring, counters, cycle bar, last device that went LEFT and how long ago. A toggles scan. B opens menu.
+- **Home** — sweep ring, counters, cycle bar, uptime, last device that went LEFT and how long ago. A toggles scan. B opens menu.
 - **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home. Glyph + live counts. A opens, B next.
 - **Devices** — `W` AP, `B` BLE, `P` probe-only station, `*` both radios. Left rows sort first.
 - **Alerts** — LEFT, probes, high persist, or tracker tag
@@ -80,7 +79,8 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] v1.2.0 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.3.1
+[WF] v1.3.1 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## License
