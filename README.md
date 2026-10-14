@@ -9,9 +9,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 
 This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, connect to targets, or read GATT characteristics.
 
-## Status (v1.3.1)
+## Status (v1.4.0)
 
-- [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime
+- [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery icon
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
 - [x] Allowlist screen — view and remove saved MACs
 - [x] Live home paint so the dashboard does not blank every refresh
@@ -22,8 +22,8 @@ This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, 
 - [x] Hold BtnB to jump Home
 - [x] BLE company-ID tags (Apple, Samsung, Google) and Tile name heuristic
 - [x] 6-slot MAC allowlist
-- [ ] Deep sleep between scans (UI stays awake so buttons keep working)
-- [ ] Full offline OUI database
+- [x] Expanded offline OUI vendor database
+- [x] Duty-cycled responsive scans (UI and buttons stay live; optional deeper sleep later)
 
 Home screen and menu live in `wf_ui.h`. Device table, leftover window, and NVS prefs live in `wf_core.h`. Scan phases live in `wf_scan.h`.
 
@@ -79,8 +79,8 @@ pio run -e m5stick-c-plus2 -t upload
 `115200` baud:
 
 ```
-[WF] boot v1.3.1
-[WF] v1.3.1 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.4.0
+[WF] v1.4.0 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## License
