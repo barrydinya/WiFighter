@@ -12,7 +12,7 @@
 #include <string>
 #include "oui.h"
 
-#define FW_VERSION "1.3.1"
+#define FW_VERSION "1.4.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
