@@ -1,6 +1,10 @@
 /*
  * WiFighter — M5StickC Plus / Plus2
  * Passive BLE + WiFi leftover tracker. Authorized use only.
+ *
+ * Legal/ethical scope: observe only networks and devices you own or have
+ * explicit written permission to monitor. No deauth, injection, handshake
+ * capture, evil portal, or GATT connect is implemented or planned.
  */
 #include "wf_core.h"
 #include "wf_scan.h"
@@ -11,27 +15,45 @@ void setup() {
   M5.begin(cfg);
   Serial.begin(115200);
   M5.Display.setRotation(1);
-  M5.Display.setBrightness(80);
+  g_bright = 80;
+  M5.Display.setBrightness(g_bright);
   M5.Display.setTextSize(1);
   g_bootMs = millis();
+  g_lastInputMs = millis();
+  g_bootErr[0] = 0;
+
   loadPrefs();
   drawSplash();
 
-  WiFi.mode(WIFI_STA);
+  if (!WiFi.mode(WIFI_STA)) {
+    setBootErr("WiFi.mode STA fail");
+  }
   WiFi.disconnect(true, true);
   delay(80);
-  esp_wifi_set_promiscuous(false);
+  esp_err_t ep = esp_wifi_set_promiscuous(false);
+  if (ep != ESP_OK) {
+    Serial.printf("[WF] WARN promiscuous off err=%d\n", (int)ep);
+  }
 
+  // NimBLE-Arduino 1.4.x: init() is void (no success code). Failures surface later on scan start.
   NimBLEDevice::init("");
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
-  strncpy(g_status, "boot", sizeof(g_status) - 1);
+  restoreLastLeftStub();
+
+  strncpy(g_status, g_bootErr[0] ? "error" : "boot", sizeof(g_status) - 1);
   g_status[sizeof(g_status) - 1] = 0;
   // First cycle ~1.5s after splash so the UI paints once first.
   g_lastScan = millis() - ((uint32_t)g_scanPeriodSec * 1000UL) + 1500UL;
   g_uiForce = true;
   drawHome(true);
-  Serial.printf("[WF] boot v%s\n", FW_VERSION);
+  if (g_bootErr[0]) {
+    M5.Display.fillRect(0, 110, 240, 12, 0xF800);
+    M5.Display.setTextColor(0xFFFF, 0xF800);
+    M5.Display.setCursor(4, 112);
+    M5.Display.print(g_bootErr);
+  }
+  Serial.printf("[WF] boot v%s board=%s bat~%dmAh\n", FW_VERSION, boardLabel(), boardMah());
 }
 
 void loop() {
@@ -45,12 +67,14 @@ void loop() {
       g_holdConsumed = true;
       g_uiForce = true;
       dirty = true;
+      noteInput();
     }
   } else {
     if (g_btnBDown && !g_holdConsumed && M5.BtnB.wasReleased()) {
       handleB();
       g_uiForce = true;
       dirty = true;
+      noteInput();
     }
     g_btnBDown = 0;
     g_holdConsumed = false;
@@ -60,9 +84,11 @@ void loop() {
     handleA();
     g_uiForce = true;
     dirty = true;
+    noteInput();
   }
 
   tickScan();
+  tickPower();
 
   static uint32_t lastPaint = 0;
   if (dirty || millis() - lastPaint > 400) {

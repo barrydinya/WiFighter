@@ -51,14 +51,14 @@ static void harvestBle() {
   NimBLEScanResults res = scan->getResults();
   int n = res.getCount();
   for (int i = 0; i < n; i++) {
-    const NimBLEAdvertisedDevice* d = res.getDevice(i);
-    if (!d) continue;
-    NimBLEAddress addr = d->getAddress();
+    // 1.4.x: getDevice(uint32_t) returns by value (copy).
+    NimBLEAdvertisedDevice d = res.getDevice((uint32_t)i);
+    NimBLEAddress addr = d.getAddress();
     uint8_t mac[6];
     bleMacNative(addr, mac);
     char nm[18] = {0};
-    uint8_t tag = bleTag(d, nm);
-    upsert(mac, nm, (int8_t)d->getRSSI(), KIND_BLE, nullptr, tag);
+    uint8_t tag = bleTag(&d, nm);
+    upsert(mac, nm, (int8_t)d.getRSSI(), KIND_BLE, nullptr, tag);
   }
   scan->clearResults();
 }
@@ -88,7 +88,13 @@ static void tickScan() {
     case PH_WIFI_START:
       strncpy(g_status, "WiFi APs", sizeof(g_status) - 1);
       WiFi.scanDelete();
-      WiFi.scanNetworks(true, true);
+      // async=true, show_hidden=true — returns 0 while running; <0 on hard fail.
+      if (WiFi.scanNetworks(true, true) == WIFI_SCAN_FAILED) {
+        Serial.println("[WF] ERR WiFi.scanNetworks failed");
+        strncpy(g_status, "WiFi fail", sizeof(g_status) - 1);
+        g_phase = g_probesOn ? PH_PROBE_ARM : (g_bleOn ? PH_BLE : PH_FINISH);
+        break;
+      }
       g_phaseT = now;
       g_phase = PH_WIFI_POLL;
       break;
@@ -115,13 +121,22 @@ static void tickScan() {
       {
         wifi_promiscuous_filter_t filt = {};
         filt.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
-        esp_wifi_set_promiscuous_filter(&filt);
+        esp_err_t e1 = esp_wifi_set_promiscuous_filter(&filt);
         esp_wifi_set_promiscuous_rx_cb(sniffCb);
-        esp_wifi_set_promiscuous(true);
+        esp_err_t e2 = esp_wifi_set_promiscuous(true);
+        if (e1 != ESP_OK || e2 != ESP_OK) {
+          Serial.printf("[WF] ERR promiscuous e1=%d e2=%d\n", (int)e1, (int)e2);
+          strncpy(g_status, "probe fail", sizeof(g_status) - 1);
+          esp_wifi_set_promiscuous(false);
+          g_phase = g_bleOn ? PH_BLE : PH_FINISH;
+          break;
+        }
       }
       g_probeCh = 0;
       g_hopCh = chans[0];
-      esp_wifi_set_channel(chans[0], WIFI_SECOND_CHAN_NONE);
+      if (esp_wifi_set_channel(chans[0], WIFI_SECOND_CHAN_NONE) != ESP_OK) {
+        Serial.println("[WF] ERR set_channel");
+      }
       g_phaseT = now;
       g_phase = PH_PROBE_CH;
       break;
@@ -159,6 +174,8 @@ static void tickScan() {
         scan->setWindow(80);
         g_bleReady = false;
         if (!scan->start(BLE_SCAN_MS / 1000, onBleDone, false)) {
+          Serial.println("[WF] ERR BLE scan start");
+          strncpy(g_status, "BLE fail", sizeof(g_status) - 1);
           g_phase = PH_FINISH;
           break;
         }

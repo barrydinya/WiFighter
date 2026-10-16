@@ -12,13 +12,27 @@
 #include <string>
 #include "oui.h"
 
-#define FW_VERSION "1.4.0"
+#define FW_VERSION "1.3.2"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
 #define SCAN_PERIOD_MS 8000
 #define BLE_SCAN_MS 2000
 #define HIGH_HITS 8
+#define IDLE_DIM_SEC 60
+#define IDLE_SLEEP_SEC 300
+
+// Approximate battery capacities (mAh). Used for UI notes only — not coulomb-counted.
+#if defined(WIFIGHTER_BOARD_PLUS2)
+#define BAT_MAH_NOTE 200
+#define BOARD_LABEL_BUILD "Plus2"
+#elif defined(WIFIGHTER_BOARD_PLUS)
+#define BAT_MAH_NOTE 120
+#define BOARD_LABEL_BUILD "Plus"
+#else
+#define BAT_MAH_NOTE 120
+#define BOARD_LABEL_BUILD "Plus/Plus2"
+#endif
 
 enum Screen : uint8_t {
   SCR_HOME = 0,
@@ -117,6 +131,25 @@ static int g_detailIdx = -1;
 static int g_setIdx = 0;
 static int g_confirmKind = 0;
 static int g_lastLeft = -1;
+
+// Boot / radio failure text (shown on TFT + Serial). Empty = OK.
+static char g_bootErr[48] = "";
+static uint32_t g_lastInputMs = 0;
+static uint8_t g_bright = 80;
+static bool g_dimmed = false;
+static bool g_sleepOnIdle = false;  // opt-in deep sleep after idle
+static bool g_savedLeftValid = false;
+static uint8_t g_savedLeftMac[6];
+static char g_savedLeftLabel[18];
+static uint8_t g_savedLeftKind = 0;
+
+static void setBootErr(const char* msg);
+static void saveLastLeft(int idx);
+static void restoreLastLeftStub();
+static void noteInput();
+static void tickPower();
+static const char* boardLabel();
+static int boardMah();
 
 static void clip(const char* in, char* out, size_t n) {
   if (!out || n == 0) return;
@@ -346,6 +379,7 @@ static void markLeft() {
       if (!g_devs[i].left) {
         g_devs[i].left = true;
         g_lastLeft = i;
+        saveLastLeft(i);
       }
     }
   }
@@ -359,12 +393,104 @@ static void clearDevs() {
   g_listScroll = 0;
 }
 
-static void savePrefs() {
+static void setBootErr(const char* msg) {
+  clip(msg, g_bootErr, sizeof(g_bootErr));
+  Serial.printf("[WF] ERR %s\n", g_bootErr);
+}
+
+static const char* boardLabel() {
+  // Runtime detection preferred; build flag is fallback for About text.
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickCPlus2: return "StickC Plus2";
+    case m5::board_t::board_M5StickCPlus: return "StickC Plus";
+    case m5::board_t::board_M5StickC: return "StickC";
+    default: return BOARD_LABEL_BUILD;
+  }
+}
+
+static int boardMah() {
+  switch (M5.getBoard()) {
+    case m5::board_t::board_M5StickCPlus2: return 200;
+    case m5::board_t::board_M5StickCPlus: return 120;
+    default: return BAT_MAH_NOTE;
+  }
+}
+
+static void noteInput() {
+  g_lastInputMs = millis();
+  if (g_dimmed) {
+    M5.Display.setBrightness(g_bright);
+    g_dimmed = false;
+  }
+}
+
+static void saveLastLeft(int idx) {
+  if (idx < 0 || !g_devs[idx].used) return;
+  const Dev& d = g_devs[idx];
+  memcpy(g_savedLeftMac, d.mac, 6);
+  clip(d.ssid[0] ? d.ssid : (d.name[0] ? d.name : ""), g_savedLeftLabel, sizeof(g_savedLeftLabel));
+  g_savedLeftKind = d.kind;
+  g_savedLeftValid = true;
   if (!g_prefs.begin("wifighter", false)) return;
+  g_prefs.putBool("llOk", true);
+  g_prefs.putBytes("llMac", g_savedLeftMac, 6);
+  g_prefs.putString("llLbl", g_savedLeftLabel);
+  g_prefs.putUChar("llKind", g_savedLeftKind);
+  g_prefs.end();
+}
+
+static void restoreLastLeftStub() {
+  if (!g_savedLeftValid) return;
+  if (findDev(g_savedLeftMac) >= 0) return;
+  int i = allocDev();
+  if (i < 0) return;
+  memset(&g_devs[i], 0, sizeof(Dev));
+  memcpy(g_devs[i].mac, g_savedLeftMac, 6);
+  clip(g_savedLeftLabel, g_devs[i].ssid, sizeof(g_devs[i].ssid));
+  g_devs[i].kind = g_savedLeftKind ? g_savedLeftKind : KIND_WIFI;
+  g_devs[i].used = true;
+  g_devs[i].left = true;
+  g_devs[i].firstMs = millis();
+  g_devs[i].lastMs = millis();  // age shows 0s until real sightings; stub only
+  g_devs[i].hits = 0;
+  g_lastLeft = i;
+}
+
+static void tickPower() {
+  // Auto-dim after IDLE_DIM_SEC with no button input. Optional deep sleep.
+  if (g_lastInputMs == 0) g_lastInputMs = millis();
+  uint32_t idle = millis() - g_lastInputMs;
+  if (!g_dimmed && idle > (uint32_t)IDLE_DIM_SEC * 1000UL) {
+    M5.Display.setBrightness(12);
+    g_dimmed = true;
+  }
+  if (g_sleepOnIdle && idle > (uint32_t)IDLE_SLEEP_SEC * 1000UL) {
+    Serial.println("[WF] idle deep sleep (wake: power btn)");
+    M5.Display.fillScreen(0x0000);
+    M5.Display.setBrightness(0);
+    // 0 = sleep until power button / timer wake handled by M5Unified PMU path.
+    // Plus (AXP192) and Plus2 (GPIO power) both supported via M5.Power.
+    M5.Power.deepSleep(M5.Power.sleep_no_timer);
+  }
+  // Long-press power button → deep sleep (Plus2 exposes BtnPWR; Plus may no-op).
+  if (M5.BtnPWR.wasHold()) {
+    Serial.println("[WF] power hold → deep sleep");
+    M5.Display.fillScreen(0x0000);
+    M5.Display.setBrightness(0);
+    M5.Power.deepSleep(M5.Power.sleep_no_timer);
+  }
+}
+
+static void savePrefs() {
+  if (!g_prefs.begin("wifighter", false)) {
+    setBootErr("NVS save fail");
+    return;
+  }
   g_prefs.putBool("wifi", g_wifiOn);
   g_prefs.putBool("ble", g_bleOn);
   g_prefs.putBool("prb", g_probesOn);
   g_prefs.putBool("scan", g_scanning);
+  g_prefs.putBool("slp", g_sleepOnIdle);
   g_prefs.putUShort("period", g_scanPeriodSec);
   g_prefs.putUShort("left", g_leftWinSec);
   g_prefs.putUChar("allowN", g_allowUsed);
@@ -373,11 +499,16 @@ static void savePrefs() {
 }
 
 static void loadPrefs() {
-  if (!g_prefs.begin("wifighter", true)) return;
+  if (!g_prefs.begin("wifighter", true)) {
+    // First boot or NVS unavailable — keep defaults, do not hard-fail.
+    Serial.println("[WF] NVS open (ro) miss — defaults");
+    return;
+  }
   g_wifiOn = g_prefs.getBool("wifi", true);
   g_bleOn = g_prefs.getBool("ble", true);
   g_probesOn = g_prefs.getBool("prb", true);
   g_scanning = g_prefs.getBool("scan", true);
+  g_sleepOnIdle = g_prefs.getBool("slp", false);
   g_scanPeriodSec = g_prefs.getUShort("period", 8);
   g_leftWinSec = g_prefs.getUShort("left", 45);
   if (g_scanPeriodSec < 4) g_scanPeriodSec = 4;
@@ -388,6 +519,14 @@ static void loadPrefs() {
   if (g_allowUsed > ALLOW_SLOTS) g_allowUsed = ALLOW_SLOTS;
   size_t got = g_prefs.getBytes("allow", g_allow, sizeof(g_allow));
   if (got < sizeof(g_allow)) memset(((uint8_t*)g_allow) + got, 0, sizeof(g_allow) - got);
+  g_savedLeftValid = g_prefs.getBool("llOk", false);
+  if (g_savedLeftValid) {
+    size_t m = g_prefs.getBytes("llMac", g_savedLeftMac, 6);
+    if (m != 6) g_savedLeftValid = false;
+    String lbl = g_prefs.getString("llLbl", "");
+    clip(lbl.c_str(), g_savedLeftLabel, sizeof(g_savedLeftLabel));
+    g_savedLeftKind = g_prefs.getUChar("llKind", KIND_WIFI);
+  }
   g_prefs.end();
 }
 
@@ -416,7 +555,8 @@ static void removeAllow(int idx) {
   savePrefs();
 }
 
-static uint8_t bleTag(const NimBLEAdvertisedDevice* d, char* nm) {
+static uint8_t bleTag(NimBLEAdvertisedDevice* d, char* nm) {
+  // NimBLE-Arduino 1.4.x: getDevice(i) returns by value; methods are non-const.
   if (!d || !nm) return TAG_NONE;
   nm[0] = 0;
   if (d->haveName()) {
@@ -424,7 +564,8 @@ static uint8_t bleTag(const NimBLEAdvertisedDevice* d, char* nm) {
     if (strncasecmp(nm, "Tile", 4) == 0) return TAG_TILE;
   }
   if (d->haveManufacturerData()) {
-    std::string md = d->getManufacturerData();
+    // Disambiguate from the template overload getManufacturerData<T>(bool).
+    std::string md = d->getManufacturerData((uint8_t)0);
     if (md.size() >= 2) {
       uint16_t cid = (uint8_t)md[0] | ((uint16_t)(uint8_t)md[1] << 8);
       if (cid == 0x004C) return TAG_APPLE;
@@ -447,7 +588,7 @@ static void bleMacNative(const NimBLEAddress& addr, uint8_t* mac) {
 }
 
 static void logCycle() {
-  Serial.printf("[WF] v%s live=%d left=%d high=%d probe=%d total=%d ch=%u\n",
-                FW_VERSION, countLive(), countLeft(), countHigh(), countProbe(),
-                countUsed(), (unsigned)g_hopCh);
+  Serial.printf("[WF] t=%lu v%s live=%d left=%d high=%d probe=%d total=%d ch=%u\n",
+                (unsigned long)millis(), FW_VERSION, countLive(), countLeft(),
+                countHigh(), countProbe(), countUsed(), (unsigned)g_hopCh);
 }
