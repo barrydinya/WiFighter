@@ -60,9 +60,15 @@ void loop() {
   M5.update();
   bool dirty = false;
 
+  // First press while dimmed only wakes the panel (no toggle / navigate).
   if (M5.BtnB.isPressed()) {
     if (g_btnBDown == 0) g_btnBDown = millis();
-    if (!g_holdConsumed && millis() - g_btnBDown > 650 && g_screen != SCR_HOME) {
+    if (g_dimmed) {
+      noteInput();
+      g_holdConsumed = true;  // swallow this press; next release should not nav
+      g_uiForce = true;
+      dirty = true;
+    } else if (!g_holdConsumed && millis() - g_btnBDown > 650 && g_screen != SCR_HOME) {
       g_screen = SCR_HOME;
       g_holdConsumed = true;
       g_uiForce = true;
@@ -81,10 +87,14 @@ void loop() {
   }
 
   if (M5.BtnA.wasPressed()) {
-    handleA();
+    if (g_dimmed) {
+      noteInput();
+    } else {
+      handleA();
+      noteInput();
+    }
     g_uiForce = true;
     dirty = true;
-    noteInput();
   }
 
   tickScan();

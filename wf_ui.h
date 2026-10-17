@@ -167,7 +167,8 @@ static void paintLastLeft() {
     char ago[8];
     macFmt(d.mac, mac, sizeof(mac));
     clip(d.ssid[0] ? d.ssid : (d.name[0] ? d.name : mac), label, 14);
-    ageText(d.lastMs, ago, sizeof(ago));
+    if (isLeftStub(d)) snprintf(ago, sizeof(ago), "saved");
+    else ageText(d.lastMs, ago, sizeof(ago));
     M5.Display.setTextColor(COL_WHITE, COL_PANEL);
     M5.Display.setCursor(62, 50);
     M5.Display.printf("%c %s", kindMark(d.kind), label);
@@ -201,11 +202,18 @@ static void paintHomeLive() {
   M5.Display.setTextColor(g_probesOn ? COL_AMBER : COL_DIM, COL_BG);
   M5.Display.setCursor(128, 20);
   M5.Display.print(g_probesOn ? "PRB" : "prb");
-  M5.Display.setTextColor(COL_WHITE, COL_BG);
   M5.Display.setCursor(160, 20);
-  if (!g_scanning) M5.Display.print("paused");
-  else if (g_phase == PH_WAIT) M5.Display.printf("next %ds", secondsUntilScan());
-  else M5.Display.printf("%s", phaseLabel());
+  // Surface radio/NVS failures on Home so a lit-but-blank scan isn't silent.
+  bool fail = (strstr(g_status, "fail") != nullptr) || (strcmp(g_status, "error") == 0);
+  if (fail) {
+    M5.Display.setTextColor(COL_RED, COL_BG);
+    M5.Display.print(g_status);
+  } else {
+    M5.Display.setTextColor(COL_WHITE, COL_BG);
+    if (!g_scanning) M5.Display.print("paused");
+    else if (g_phase == PH_WAIT) M5.Display.printf("next %ds", secondsUntilScan());
+    else M5.Display.printf("%s", phaseLabel());
+  }
   {
     uint32_t up = (millis() - g_bootMs) / 1000UL;
     char upbuf[12];
@@ -319,8 +327,10 @@ static void drawDevices() {
   int n = countUsed();
   if (n == 0) {
     M5.Display.setTextColor(COL_DIM, COL_BG);
-    M5.Display.setCursor(8, 50);
+    M5.Display.setCursor(8, 44);
     M5.Display.print("no devices yet");
+    M5.Display.setCursor(8, 60);
+    M5.Display.print(g_scanning ? "waiting for a cycle" : "A on Home to arm");
   } else {
     if (g_listIdx >= n) g_listIdx = n - 1;
     if (g_listIdx < g_listScroll) g_listScroll = g_listIdx;
@@ -409,7 +419,8 @@ static void drawDetail() {
   M5.Display.setCursor(4, 62);
   M5.Display.printf("name %s", d.name[0] ? d.name : "-");
   M5.Display.setCursor(4, 76);
-  M5.Display.printf("%c hits %u  %s", kindMark(d.kind), d.hits, d.left ? "LEFT" : "HERE");
+  M5.Display.printf("%c hits %u  %s", kindMark(d.kind), d.hits,
+                    isLeftStub(d) ? "SAVED" : (d.left ? "LEFT" : "HERE"));
   M5.Display.setCursor(4, 90);
   M5.Display.setTextColor(d.tag ? COL_AMBER : COL_DIM, COL_BG);
   M5.Display.printf("tag %s", d.tag ? tagName(d.tag) : "none");

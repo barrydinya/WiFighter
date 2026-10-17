@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.3.3
+
+UI polish pass — still passive; no attack features.
+
+- Dim wake: first A/B while dimmed only restores brightness (no toggle / navigate)
+- Home: show `g_status` in red when a radio phase fails (WiFi / probe / BLE)
+- Last-LEFT NVS stub: Home/Detail label as **saved** instead of a fake 0s age
+- Devices: empty-state hint; sort LEFT first, then stronger RSSI, then newest
+- Version bump; README status / Serial example updated
+
 ## v1.3.2
 
 Hardening release — still passive; no attack features.

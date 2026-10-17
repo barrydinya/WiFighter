@@ -9,7 +9,7 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, capture handshakes/PMKID, run an evil portal, connect to targets, or read GATT characteristics.
 
-## Status (v1.3.2)
+## Status (v1.3.3)
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
@@ -18,6 +18,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 - [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, randomized-MAC flag, last-seen)
 - [x] Settings + allowlist + last-left stub + scan mode saved to NVS
 - [x] Hold BtnB → Home; A = select/toggle; B = menu/next
+- [x] Dim wake: first A/B press while dimmed only undims (no accidental toggle)
+- [x] Home surfaces radio fail status (WiFi/probe/BLE fail) in red
+- [x] Device list: LEFT first, then stronger RSSI; NVS last-left stub shows "saved"
 - [x] Auto-dim after 60 s idle; optional idle deep sleep (Settings); power-button hold → deep sleep (Plus2 `BtnPWR`)
 - [x] Fail-visible radio/NVS errors on Serial (+ boot banner on TFT)
 - [ ] Full offline OUI database (small built-in table only)
@@ -67,7 +70,7 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 
 ## Screens
 
-- **Home** — sweep ring, counters, cycle bar, uptime, battery %, last LEFT device. A toggles scan. B opens menu.
+- **Home** — sweep ring, counters, cycle bar, uptime, battery %, last LEFT device (NVS stub shows **saved**). A toggles scan. B opens menu. Radio fails show in red.
 - **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home.
 - **Devices / Alerts / Detail / Allowlist / Settings / Confirm / About** — as before; Settings adds **Idle sleep** (opt-in deep sleep after 5 min idle). About shows board name + ~mAh note.
 
@@ -86,8 +89,8 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 Example:
 
 ```
-[WF] boot v1.3.2 board=StickC Plus2 bat~200mAh
-[WF] t=12345 v1.3.2 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.3.3 board=StickC Plus2 bat~200mAh
+[WF] t=12345 v1.3.3 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## Known limits

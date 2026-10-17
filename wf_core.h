@@ -12,7 +12,7 @@
 #include <string>
 #include "oui.h"
 
-#define FW_VERSION "1.3.2"
+#define FW_VERSION "1.3.3"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
@@ -276,7 +276,7 @@ static int countAlerts() {
   return n;
 }
 
-// Left rows first, then newest lastMs. O(n^2) is fine for MAX_DEV=28.
+// Left rows first, then stronger RSSI, then newest lastMs. O(n^2) OK for MAX_DEV=28.
 static bool listBefore(int a, int b, bool alertMode) {
   const Dev& da = g_devs[a];
   const Dev& db = g_devs[b];
@@ -286,6 +286,7 @@ static bool listBefore(int a, int b, bool alertMode) {
     if (aa != ab) return aa;
   }
   if (da.left != db.left) return da.left;
+  if (da.rssi != db.rssi) return da.rssi > db.rssi;
   return da.lastMs > db.lastMs;
 }
 
@@ -308,6 +309,11 @@ static int nthBy(int want, bool alertMode) {
   }
   if (want < 0 || want >= n) return -1;
   return idx[want];
+}
+
+static bool isLeftStub(const Dev& d) {
+  // NVS-restored leftover: left, zero hits, never re-seen this boot.
+  return d.used && d.left && d.hits == 0;
 }
 
 static int nthUsed(int want) { return nthBy(want, false); }
@@ -440,6 +446,8 @@ static void saveLastLeft(int idx) {
 }
 
 static void restoreLastLeftStub() {
+  // Rebuild a LEFT stub so Home can show the last leftover across reboot.
+  // hits==0 marks it as NVS-restored (UI shows "saved" instead of a fake age).
   if (!g_savedLeftValid) return;
   if (findDev(g_savedLeftMac) >= 0) return;
   int i = allocDev();
@@ -451,8 +459,9 @@ static void restoreLastLeftStub() {
   g_devs[i].used = true;
   g_devs[i].left = true;
   g_devs[i].firstMs = millis();
-  g_devs[i].lastMs = millis();  // age shows 0s until real sightings; stub only
+  g_devs[i].lastMs = millis();
   g_devs[i].hits = 0;
+  g_devs[i].rssi = -127;  // unknown until re-seen
   g_lastLeft = i;
 }
 
