@@ -7,9 +7,11 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 > **ETHICAL USE ONLY**
 > Authorized security research, personal privacy monitoring, or lab testing on networks and devices you own or have explicit written permission to observe. Unauthorized tracking or disruption is illegal.
 >
-> This firmware is **passive**. It does not deauth, inject, clone APs, spoof HID, capture handshakes/PMKID, run an evil portal, connect to targets, or read GATT characteristics.
+> This firmware is **passive / listen-only**. Wi-Fi APs are found with a passive beacon scan, probe requests are only *received* in promiscuous mode, and BLE scanning is passive (no scan requests). It does not transmit probe requests, deauth, inject, clone APs, spoof HID, capture handshakes/PMKID, run an evil portal, associate/connect to targets, or read GATT characteristics — and pull requests adding any of that will not be accepted.
+>
+> **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.3.3)
+## Status (v1.4.0)
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
@@ -19,10 +21,14 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 - [x] Settings + allowlist + last-left stub + scan mode saved to NVS
 - [x] Hold BtnB → Home; A = select/toggle; B = menu/next
 - [x] Dim wake: first A/B press while dimmed only undims (no accidental toggle)
-- [x] Home surfaces radio fail status (WiFi/probe/BLE fail) in red
+- [x] Home shows a sticky red error banner (WiFi / probe / BLE / NVS / boot) until a clean cycle
+- [x] Passive (beacon-listen) Wi-Fi AP scan — no probe requests transmitted
+- [x] Menu, Devices, Alerts, Detail refresh live without full-screen flicker
+- [x] Detail → B allow confirms with a toast; Settings auto-save to NVS
 - [x] Device list: LEFT first, then stronger RSSI; NVS last-left stub shows "saved"
-- [x] Auto-dim after 60 s idle; optional idle deep sleep (Settings); power-button hold → deep sleep (Plus2 `BtnPWR`)
-- [x] Fail-visible radio/NVS errors on Serial (+ boot banner on TFT)
+- [x] Auto-dim after 60 s idle; optional idle deep sleep (Settings); power-button hold → deep sleep. Wake: Plus2 = power button, Plus = BtnA
+- [x] Fail-visible radio/NVS errors on Serial and TFT
+- [ ] Hardware-verified on both boards for v1.4.0 (compile-checked only; see Known limits)
 - [ ] Full offline OUI database (small built-in table only)
 - [ ] SD / JSON log files — **not applicable**: StickC Plus/Plus2 have no microSD
 
@@ -66,17 +72,21 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 | **BtnA** | Select / toggle scan on Home / change setting |
 | **BtnB** | Open menu / next item / scroll |
 | **Hold BtnB** | Jump Home |
-| **Hold BtnPWR** (Plus2) | Deep sleep (wake with power button) |
+| **Hold BtnPWR** | Deep sleep. Wake: **Plus2** power button, **Plus** BtnA |
 
 ## Screens
 
-- **Home** — sweep ring, counters, cycle bar, uptime, battery %, last LEFT device (NVS stub shows **saved**). A toggles scan. B opens menu. Radio fails show in red.
+- **Home** — sweep ring, counters, cycle bar, uptime, battery % (`+` = charging, `--%` = unknown), last LEFT device (NVS stub shows **saved**). A toggles scan. B opens menu. Errors replace the radio-flag row with a red banner until the next clean cycle.
 - **Menu** — scan, devices, alerts, allowlist, settings, clear, about, home.
-- **Devices / Alerts / Detail / Allowlist / Settings / Confirm / About** — as before; Settings adds **Idle sleep** (opt-in deep sleep after 5 min idle). About shows board name + ~mAh note.
+- **Devices / Alerts** — live list (refreshes every 2 s), LEFT first then strongest RSSI; footer shows position. A opens Detail, B scrolls.
+- **Detail** — MAC, OUI, RSSI, SSID/name, hits, tag, last seen, randomized-MAC flag. A back, B adds the MAC to the allowlist (toast + jump to Allowlist).
+- **Allowlist** — A removes the selected MAC, B scrolls (6 slots, NVS).
+- **Settings** — WiFi / BLE / probe toggles, scan period, left window, idle sleep. Every A press saves to NVS. "Done" returns Home.
+- **Confirm / About** — clear-table confirm (RAM only); build, board, ~mAh, authorized-use note.
 
 ## How "left" works
 
-1. Each cycle: Wi-Fi AP scan → probe-request sniff on channels 1/6/11 → BLE advert scan. Phases yield so the UI keeps painting.
+1. Each cycle: passive Wi-Fi AP (beacon) scan → probe-request sniff on channels 1/6/11 → BLE advert scan. Phases yield so the UI keeps painting.
 2. A probe request is a station that is not associated and is still advertising a network it used to join.
 3. A MAC unseen longer than the left window (default 45 s) is marked **LEFT**. The most recent LEFT MAC is persisted in NVS and restored as a stub after reboot.
 4. Allowlisted MACs are dropped and not shown again.
@@ -89,18 +99,20 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 Example:
 
 ```
-[WF] boot v1.3.3 board=StickC Plus2 bat~200mAh
-[WF] t=12345 v1.3.3 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.4.0 board=StickC Plus2 bat~200mAh wake=0
+[WF] t=12345 v1.4.0 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## Known limits
 
 - **Passive only** — no active Wi-Fi/BLE attacks by design.
-- **Arduino-ESP32 2.x** (PlatformIO `espressif32` 6.x/7.x with Arduino core 2.0.17 here). Not verified on Arduino-ESP32 3.x / IDF 5.x; NimBLE-Arduino 1.4.x APIs differ from older 1.3.x (`getDevice(i)` returns by value).
+- **Arduino-ESP32 2.x** (PlatformIO `espressif32` with Arduino core 2.0.17; v1.4.0 compile-checked with M5Unified 0.2.26 + NimBLE-Arduino 1.4.3). Not verified on Arduino-ESP32 3.x / IDF 5.x; NimBLE-Arduino 1.4.x APIs differ from older 1.3.x (`getDevice(i)` returns by value).
 - **MAX_DEV = 28**, probe slots = 12, allowlist = 6.
 - **OUI table** is a small hint list, not IEEE-complete.
 - **BLE MAC** endianness corrected for NimBLE native order; still subject to random/private addresses.
-- **Deep sleep**: idle sleep is **off** by default (watching leftovers needs a live UI). Auto-dim is always on after 60 s. Plus2 power-hold sleep verified in API; Plus AXP path uses the same `M5.Power.deepSleep` call — confirm wake behavior on your unit.
+- **Deep sleep**: idle sleep is **off** by default (watching leftovers needs a live UI). Auto-dim is always on after 60 s. Plus wakes on BtnA via ext0 on GPIO37 — this relies on the board's external pull-up on BtnA; if your Plus wakes immediately, leave idle sleep off and report it. On Plus2 running from battery, sleep may drop the power-hold line and fully power off; the power button then cold-boots (same result for the user). Deep-sleep wake is a reboot — the device table is RAM-only, the last LEFT stub and settings come back from NVS.
+- **Passive AP scan** dwells 250 ms per channel (~3.3 s for ch 1–13). APs with long beacon intervals can be missed in one cycle and show up on the next.
+- **Single loop, radio stacks on core 0**: the Wi-Fi and NimBLE host tasks run on core 0; the UI and the cooperative scan state machine run in `loop()` on core 1 and never block on a scan. Lists re-sort by RSSI on refresh, so the highlighted row can shift as signals change.
 - **Battery %** is PMU-estimated; mAh values are nominal, not measured drain.
 
 ## License
