@@ -83,15 +83,16 @@ static void tickScan() {
     case PH_WAIT:
       if (now - g_lastScan < period) return;
       g_lastScan = now;
+      g_cycleErr = false;
       g_phase = g_wifiOn ? PH_WIFI_START : (g_probesOn ? PH_PROBE_ARM : (g_bleOn ? PH_BLE : PH_FINISH));
       break;
     case PH_WIFI_START:
       strncpy(g_status, "WiFi APs", sizeof(g_status) - 1);
       WiFi.scanDelete();
-      // async=true, show_hidden=true — returns 0 while running; <0 on hard fail.
-      if (WiFi.scanNetworks(true, true) == WIFI_SCAN_FAILED) {
-        Serial.println("[WF] ERR WiFi.scanNetworks failed");
-        strncpy(g_status, "WiFi fail", sizeof(g_status) - 1);
+      // async, show_hidden, passive=true: listen for beacons only, no probe
+      // requests transmitted. Returns WIFI_SCAN_RUNNING while busy, FAILED on error.
+      if (WiFi.scanNetworks(true, true, true, WIFI_PASSIVE_MS_PER_CH) == WIFI_SCAN_FAILED) {
+        setRadioErr("WiFi fail");
         g_phase = g_probesOn ? PH_PROBE_ARM : (g_bleOn ? PH_BLE : PH_FINISH);
         break;
       }
@@ -100,7 +101,9 @@ static void tickScan() {
       break;
     case PH_WIFI_POLL: {
       int n = WiFi.scanComplete();
-      if (n == WIFI_SCAN_RUNNING && now - g_phaseT < 4500) return;
+      if (n == WIFI_SCAN_RUNNING && now - g_phaseT < 5000) return;
+      if (n == WIFI_SCAN_RUNNING) setRadioErr("WiFi slow");
+      else if (n == WIFI_SCAN_FAILED) setRadioErr("WiFi fail");
       if (n > 0) {
         for (int i = 0; i < n; i++) {
           uint8_t mac[6];
@@ -126,7 +129,7 @@ static void tickScan() {
         esp_err_t e2 = esp_wifi_set_promiscuous(true);
         if (e1 != ESP_OK || e2 != ESP_OK) {
           Serial.printf("[WF] ERR promiscuous e1=%d e2=%d\n", (int)e1, (int)e2);
-          strncpy(g_status, "probe fail", sizeof(g_status) - 1);
+          setRadioErr("probe fail");
           esp_wifi_set_promiscuous(false);
           g_phase = g_bleOn ? PH_BLE : PH_FINISH;
           break;
@@ -135,7 +138,7 @@ static void tickScan() {
       g_probeCh = 0;
       g_hopCh = chans[0];
       if (esp_wifi_set_channel(chans[0], WIFI_SECOND_CHAN_NONE) != ESP_OK) {
-        Serial.println("[WF] ERR set_channel");
+        setRadioErr("chan fail");
       }
       g_phaseT = now;
       g_phase = PH_PROBE_CH;
@@ -154,16 +157,22 @@ static void tickScan() {
       }
       g_phase = PH_PROBE_DONE;
       break;
-    case PH_PROBE_DONE:
+    case PH_PROBE_DONE: {
       esp_wifi_set_promiscuous(false);
+      // Snapshot under the same lock the RX callback uses (it runs on the WiFi task).
+      static ProbeHit snap[PROBE_SLOTS];
+      portENTER_CRITICAL(&g_probeMux);
+      memcpy(snap, g_probes, sizeof(snap));
+      portEXIT_CRITICAL(&g_probeMux);
       g_probeCount = 0;
       for (int i = 0; i < PROBE_SLOTS; i++) {
-        if (!g_probes[i].used) continue;
+        if (!snap[i].used) continue;
         g_probeCount++;
-        upsert(g_probes[i].mac, g_probes[i].ssid, g_probes[i].rssi, KIND_PROBE, g_probes[i].ssid, TAG_NONE);
+        upsert(snap[i].mac, snap[i].ssid, snap[i].rssi, KIND_PROBE, snap[i].ssid, TAG_NONE);
       }
       g_phase = g_bleOn ? PH_BLE : PH_FINISH;
       break;
+    }
     case PH_BLE:
       if (!g_bleStarted) {
         strncpy(g_status, "BLE scan", sizeof(g_status) - 1);
@@ -174,8 +183,7 @@ static void tickScan() {
         scan->setWindow(80);
         g_bleReady = false;
         if (!scan->start(BLE_SCAN_MS / 1000, onBleDone, false)) {
-          Serial.println("[WF] ERR BLE scan start");
-          strncpy(g_status, "BLE fail", sizeof(g_status) - 1);
+          setRadioErr("BLE fail");
           g_phase = PH_FINISH;
           break;
         }
@@ -184,6 +192,12 @@ static void tickScan() {
         return;
       }
       if (!g_bleReady && now - g_phaseT < BLE_SCAN_MS + 1500) return;
+      if (!g_bleReady) {
+        // Completion callback never fired: stop so results are stable to read.
+        NimBLEScan* scan = NimBLEDevice::getScan();
+        if (scan) scan->stop();
+        setRadioErr("BLE slow");
+      }
       harvestBle();
       g_bleStarted = false;
       g_bleReady = false;
@@ -191,6 +205,7 @@ static void tickScan() {
       break;
     case PH_FINISH:
       markLeft();
+      if (!g_cycleErr) g_radioErr[0] = 0;  // clean cycle clears the banner
       strncpy(g_status, "watching", sizeof(g_status) - 1);
       g_status[sizeof(g_status) - 1] = 0;
       logCycle();

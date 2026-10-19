@@ -5,6 +5,7 @@
  * Legal/ethical scope: observe only networks and devices you own or have
  * explicit written permission to monitor. No deauth, injection, handshake
  * capture, evil portal, or GATT connect is implemented or planned.
+ * Wi-Fi AP discovery uses a passive (beacon-listen) scan; BLE scan is passive.
  */
 #include "wf_core.h"
 #include "wf_scan.h"
@@ -46,14 +47,9 @@ void setup() {
   // First cycle ~1.5s after splash so the UI paints once first.
   g_lastScan = millis() - ((uint32_t)g_scanPeriodSec * 1000UL) + 1500UL;
   g_uiForce = true;
-  drawHome(true);
-  if (g_bootErr[0]) {
-    M5.Display.fillRect(0, 110, 240, 12, 0xF800);
-    M5.Display.setTextColor(0xFFFF, 0xF800);
-    M5.Display.setCursor(4, 112);
-    M5.Display.print(g_bootErr);
-  }
-  Serial.printf("[WF] boot v%s board=%s bat~%dmAh\n", FW_VERSION, boardLabel(), boardMah());
+  drawHome(true);  // boot errors render as the sticky red Home banner
+  Serial.printf("[WF] boot v%s board=%s bat~%dmAh wake=%d\n", FW_VERSION, boardLabel(), boardMah(),
+                (int)esp_sleep_get_wakeup_cause());
 }
 
 void loop() {

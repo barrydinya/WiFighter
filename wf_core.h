@@ -7,12 +7,13 @@
 #include <esp_wifi.h>
 #include <NimBLEDevice.h>
 #include <Preferences.h>
+#include <esp_sleep.h>
 #include <string.h>
 #include <stdlib.h>
 #include <string>
 #include "oui.h"
 
-#define FW_VERSION "1.3.3"
+#define FW_VERSION "1.4.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
@@ -21,6 +22,8 @@
 #define HIGH_HITS 8
 #define IDLE_DIM_SEC 60
 #define IDLE_SLEEP_SEC 300
+#define WIFI_PASSIVE_MS_PER_CH 250  // listen-only AP scan dwell per channel
+#define TOAST_MS 2200
 
 // Approximate battery capacities (mAh). Used for UI notes only — not coulomb-counted.
 #if defined(WIFIGHTER_BOARD_PLUS2)
@@ -142,6 +145,14 @@ static bool g_savedLeftValid = false;
 static uint8_t g_savedLeftMac[6];
 static char g_savedLeftLabel[18];
 static uint8_t g_savedLeftKind = 0;
+
+// Sticky radio error: survives later phases so Home can show it, cleared after
+// the next cycle that runs with no radio failure.
+static char g_radioErr[16] = "";
+static bool g_cycleErr = false;
+// Short footer message (e.g. "MAC allowed"). 0 = none.
+static char g_toast[24] = "";
+static uint32_t g_toastUntil = 0;
 
 static void setBootErr(const char* msg);
 static void saveLastLeft(int idx);
@@ -404,6 +415,28 @@ static void setBootErr(const char* msg) {
   Serial.printf("[WF] ERR %s\n", g_bootErr);
 }
 
+static void setRadioErr(const char* msg) {
+  clip(msg, g_radioErr, sizeof(g_radioErr));
+  g_cycleErr = true;
+  Serial.printf("[WF] ERR %s\n", g_radioErr);
+}
+
+// Text to show in the red Home banner, or nullptr when healthy.
+static const char* activeErr() {
+  if (g_bootErr[0]) return g_bootErr;
+  if (g_radioErr[0]) return g_radioErr;
+  return nullptr;
+}
+
+static void toast(const char* msg) {
+  clip(msg, g_toast, sizeof(g_toast));
+  g_toastUntil = millis() + TOAST_MS;
+}
+
+static bool toastActive() {
+  return g_toast[0] && (int32_t)(g_toastUntil - millis()) > 0;
+}
+
 static const char* boardLabel() {
   // Runtime detection preferred; build flag is fallback for About text.
   switch (M5.getBoard()) {
@@ -465,6 +498,29 @@ static void restoreLastLeftStub() {
   g_lastLeft = i;
 }
 
+static void goSleep(const char* why) {
+  // Quiet the radios first so nothing is mid-scan when the chip stops.
+  esp_wifi_set_promiscuous(false);
+  NimBLEScan* scan = NimBLEDevice::getScan();
+  if (scan && scan->isScanning()) scan->stop();
+  M5.Display.fillScreen(0x0000);
+  M5.Display.setBrightness(0);
+  if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+    // M5Unified arms GPIO35 (power button) as the ext0 wake pin on Plus2.
+    Serial.printf("[WF] deep sleep (%s) wake: PWR button\n", why);
+    Serial.flush();
+    M5.Power.deepSleep(M5.Power.sleep_no_timer, true);
+  } else {
+    // StickC Plus: M5Unified has no wake pin for AXP192 boards, so deep sleep
+    // would only end on reset. Arm BtnA (GPIO37, RTC IO, active-low with the
+    // board's external pull-up) as the ext0 wake source instead.
+    esp_err_t e = esp_sleep_enable_ext0_wakeup(GPIO_NUM_37, 0);
+    Serial.printf("[WF] deep sleep (%s) wake: BtnA (ext0 err=%d)\n", why, (int)e);
+    Serial.flush();
+    M5.Power.deepSleep(M5.Power.sleep_no_timer, false);
+  }
+}
+
 static void tickPower() {
   // Auto-dim after IDLE_DIM_SEC with no button input. Optional deep sleep.
   if (g_lastInputMs == 0) g_lastInputMs = millis();
@@ -473,20 +529,15 @@ static void tickPower() {
     M5.Display.setBrightness(12);
     g_dimmed = true;
   }
-  if (g_sleepOnIdle && idle > (uint32_t)IDLE_SLEEP_SEC * 1000UL) {
-    Serial.println("[WF] idle deep sleep (wake: power btn)");
-    M5.Display.fillScreen(0x0000);
-    M5.Display.setBrightness(0);
-    // 0 = sleep until power button / timer wake handled by M5Unified PMU path.
-    // Plus (AXP192) and Plus2 (GPIO power) both supported via M5.Power.
-    M5.Power.deepSleep(M5.Power.sleep_no_timer);
+  // Never sleep while a button is still held (it would wake straight back up).
+  bool held = M5.BtnA.isPressed() || M5.BtnB.isPressed();
+  if (g_sleepOnIdle && !held && idle > (uint32_t)IDLE_SLEEP_SEC * 1000UL) {
+    goSleep("idle");
   }
-  // Long-press power button → deep sleep (Plus2 exposes BtnPWR; Plus may no-op).
+  // Long-press power button -> deep sleep. Plus2: GPIO35. Plus: AXP192 PEK
+  // long-press is reported by M5Unified as BtnPWR hold.
   if (M5.BtnPWR.wasHold()) {
-    Serial.println("[WF] power hold → deep sleep");
-    M5.Display.fillScreen(0x0000);
-    M5.Display.setBrightness(0);
-    M5.Power.deepSleep(M5.Power.sleep_no_timer);
+    goSleep("PWR hold");
   }
 }
 
@@ -505,6 +556,7 @@ static void savePrefs() {
   g_prefs.putUChar("allowN", g_allowUsed);
   g_prefs.putBytes("allow", g_allow, sizeof(g_allow));
   g_prefs.end();
+  if (strcmp(g_bootErr, "NVS save fail") == 0) g_bootErr[0] = 0;  // recovered
 }
 
 static void loadPrefs() {
@@ -539,9 +591,11 @@ static void loadPrefs() {
   g_prefs.end();
 }
 
-static void allowMac(const uint8_t* mac) {
-  if (!mac || isAllowed(mac)) return;
-  if (g_allowUsed >= ALLOW_SLOTS) return;
+// Returns true when the MAC is (now) on the allowlist.
+static bool allowMac(const uint8_t* mac) {
+  if (!mac) return false;
+  if (isAllowed(mac)) return true;
+  if (g_allowUsed >= ALLOW_SLOTS) return false;
   memcpy(g_allow[g_allowUsed], mac, 6);
   g_allowUsed++;
   // Drop from live table if present.
@@ -552,6 +606,7 @@ static void allowMac(const uint8_t* mac) {
     memset(&g_devs[i], 0, sizeof(Dev));
   }
   savePrefs();
+  return true;
 }
 
 static void removeAllow(int idx) {
