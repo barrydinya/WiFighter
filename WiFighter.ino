@@ -64,7 +64,9 @@ void loop() {
       g_holdConsumed = true;  // swallow this press; next release should not nav
       g_uiForce = true;
       dirty = true;
-    } else if (!g_holdConsumed && millis() - g_btnBDown > 650 && g_screen != SCR_HOME) {
+    } else if (!g_holdConsumed && millis() - g_btnBDown > 650) {
+      // Hold B = Home. Already on Home: still swallow the press so the
+      // release does not fall through to handleB() and open the Menu.
       g_screen = SCR_HOME;
       g_holdConsumed = true;
       g_uiForce = true;

@@ -11,17 +11,17 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.5.1)
+## Status (v1.5.2)
 
-> **v1.5.1 restores a broken tip.** A v1.5.0 push truncated `wf_core.h` / `wf_ui.h` so Home and Menu disappeared from the source even though this checklist still said done. Flash **v1.5.1+** only.
+> **v1.5.1 restores a broken tip.** A v1.5.0 push truncated `wf_core.h` / `wf_ui.h` so Home and Menu disappeared from the source even though this checklist still said done. Flash **v1.5.1+** only. v1.5.2 rate-limits last-left NVS writes, and hold-B on Home no longer opens the Menu.
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
 - [x] Allowlist screen — view and remove saved MACs (NVS)
 - [x] Non-blocking scan state machine (Wi-Fi AP → probe hop 1/6/11 → BLE)
 - [x] Device list + detail (MAC, SSID, OUI, tracker tag, radio, hits, randomized-MAC flag, last-seen)
-- [x] Settings + allowlist + last-left stub + scan mode saved to NVS
-- [x] Hold BtnB → Home; A = select/toggle; B = menu/next
+- [x] Settings + allowlist + last-left stub + scan mode saved to NVS (last-left writes rate-limited to 1/min, flushed before sleep)
+- [x] Hold BtnB → Home on every screen (hold is swallowed on Home); A = select/toggle; B = menu/next
 - [x] Dim wake: first A/B press while dimmed only undims (no accidental toggle)
 - [x] Home shows a sticky red error banner (WiFi / probe / BLE / NVS / boot) until a clean cycle
 - [x] Passive (beacon-listen) Wi-Fi AP scan — no probe requests transmitted
@@ -30,7 +30,7 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 - [x] Device list: LEFT first, then stronger RSSI; NVS last-left stub shows "saved"
 - [x] Auto-dim after 60 s idle; optional idle deep sleep (Settings); power-button hold → deep sleep. Wake: Plus2 = power button, Plus = BtnA
 - [x] Fail-visible radio/NVS errors on Serial and TFT
-- [ ] Hardware-verified on both boards for v1.5.1 (compile-checked only; see Known limits)
+- [ ] Hardware-verified on both boards for v1.5.2 (compile-checked only; see Known limits)
 - [ ] Full offline OUI database (small built-in table only)
 - [ ] SD / JSON log files — **not applicable**: StickC Plus/Plus2 have no microSD
 
@@ -101,8 +101,8 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 Example:
 
 ```
-[WF] boot v1.4.0 board=StickC Plus2 bat~200mAh wake=0
-[WF] t=12345 v1.4.0 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.5.2 board=StickC Plus2 bat~200mAh wake=0
+[WF] t=12345 v1.5.2 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## Known limits
@@ -115,6 +115,8 @@ Example:
 - **Deep sleep**: idle sleep is **off** by default (watching leftovers needs a live UI). Auto-dim is always on after 60 s. Plus wakes on BtnA via ext0 on GPIO37 — this relies on the board's external pull-up on BtnA; if your Plus wakes immediately, leave idle sleep off and report it. On Plus2 running from battery, sleep may drop the power-hold line and fully power off; the power button then cold-boots (same result for the user). Deep-sleep wake is a reboot — the device table is RAM-only, the last LEFT stub and settings come back from NVS.
 - **Passive AP scan** dwells 250 ms per channel (~3.3 s for ch 1–13). APs with long beacon intervals can be missed in one cycle and show up on the next.
 - **Single loop, radio stacks on core 0**: the Wi-Fi and NimBLE host tasks run on core 0; the UI and the cooperative scan state machine run in `loop()` on core 1 and never block on a scan. Lists re-sort by RSSI on refresh, so the highlighted row can shift as signals change.
+- **Last-left persistence** goes to NVS at most once every 60 s. If power is cut hard (no sleep path), you can lose up to the last minute of last-left updates. Settings and the allowlist still save right away.
+- **Home sweep ring** redraws with the 400 ms Home refresh, so the sweep steps rather than spinning smoothly. This is cosmetic.
 - **Battery %** is PMU-estimated; mAh values are nominal, not measured drain.
 
 ## License

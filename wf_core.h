@@ -13,7 +13,7 @@
 #include <string>
 #include "oui.h"
 
-#define FW_VERSION "1.5.1"
+#define FW_VERSION "1.5.2"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
@@ -24,6 +24,7 @@
 #define IDLE_SLEEP_SEC 300
 #define WIFI_PASSIVE_MS_PER_CH 250  // listen-only AP scan dwell per channel
 #define TOAST_MS 2200
+#define LL_SAVE_MIN_MS 60000UL  // min gap between last-left NVS writes (flash wear)
 
 // Approximate battery capacities (mAh). Used for UI notes only — not coulomb-counted.
 #if defined(WIFIGHTER_BOARD_PLUS2)
@@ -145,6 +146,8 @@ static bool g_savedLeftValid = false;
 static uint8_t g_savedLeftMac[6];
 static char g_savedLeftLabel[18];
 static uint8_t g_savedLeftKind = 0;
+static bool g_llDirty = false;      // last-left changed in RAM, not yet in NVS
+static uint32_t g_llSavedMs = 0;    // millis() of last last-left NVS write
 
 // Sticky radio error: survives later phases so Home can show it, cleared after
 // the next cycle that runs with no radio failure.
@@ -463,6 +466,25 @@ static void noteInput() {
   }
 }
 
+// Write the pending last-left record to NVS. Rate-limited by the caller.
+static void flushLastLeft() {
+  if (!g_llDirty) return;
+  g_llDirty = false;
+  g_llSavedMs = millis();
+  if (!g_prefs.begin("wifighter", false)) {
+    setBootErr("NVS save fail");
+    return;
+  }
+  g_prefs.putBool("llOk", true);
+  g_prefs.putBytes("llMac", g_savedLeftMac, 6);
+  g_prefs.putString("llLbl", g_savedLeftLabel);
+  g_prefs.putUChar("llKind", g_savedLeftKind);
+  g_prefs.end();
+}
+
+// Record the newest leftover in RAM. NVS write is deferred: at most once per
+// LL_SAVE_MIN_MS (busy areas with randomized-MAC phones produce many leave
+// events per cycle), plus a forced flush before deep sleep.
 static void saveLastLeft(int idx) {
   if (idx < 0 || !g_devs[idx].used) return;
   const Dev& d = g_devs[idx];
@@ -470,12 +492,8 @@ static void saveLastLeft(int idx) {
   clip(d.ssid[0] ? d.ssid : (d.name[0] ? d.name : ""), g_savedLeftLabel, sizeof(g_savedLeftLabel));
   g_savedLeftKind = d.kind;
   g_savedLeftValid = true;
-  if (!g_prefs.begin("wifighter", false)) return;
-  g_prefs.putBool("llOk", true);
-  g_prefs.putBytes("llMac", g_savedLeftMac, 6);
-  g_prefs.putString("llLbl", g_savedLeftLabel);
-  g_prefs.putUChar("llKind", g_savedLeftKind);
-  g_prefs.end();
+  g_llDirty = true;
+  if (g_llSavedMs == 0 || millis() - g_llSavedMs >= LL_SAVE_MIN_MS) flushLastLeft();
 }
 
 static void restoreLastLeftStub() {
@@ -501,6 +519,7 @@ static void restoreLastLeftStub() {
 static void goSleep(const char* why) {
   // Quiet the radios first so nothing is mid-scan when the chip stops.
   esp_wifi_set_promiscuous(false);
+  flushLastLeft();  // persist any rate-limited last-left before power-down
   NimBLEScan* scan = NimBLEDevice::getScan();
   if (scan && scan->isScanning()) scan->stop();
   M5.Display.fillScreen(0x0000);
@@ -524,6 +543,7 @@ static void goSleep(const char* why) {
 static void tickPower() {
   // Auto-dim after IDLE_DIM_SEC with no button input. Optional deep sleep.
   if (g_lastInputMs == 0) g_lastInputMs = millis();
+  if (g_llDirty && millis() - g_llSavedMs >= LL_SAVE_MIN_MS) flushLastLeft();
   uint32_t idle = millis() - g_lastInputMs;
   if (!g_dimmed && idle > (uint32_t)IDLE_DIM_SEC * 1000UL) {
     M5.Display.setBrightness(12);

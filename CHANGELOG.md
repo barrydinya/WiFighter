@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.2
+
+Source review of the v1.5.1 tip: **Home and Menu are complete in the source** (`wf_ui.h` `drawHome`/`paintHomeLive`, `drawMenu`, every sub-screen, and `handleA`/`handleB`). No stubs or TODOs. This release fixes two real issues the review turned up. Still fully passive / listen-only.
+
+- **Last-left NVS writes are rate-limited (flash wear + UI stalls).** Every "device left" event used to write the last-left record to NVS right away. In busy areas, phones with randomized MACs cause several leave events per cycle, which meant constant flash writes and short blocking stalls in `loop()`. The record now updates in RAM immediately (Home shows it straight away) and goes to NVS at most once every 60 s (`LL_SAVE_MIN_MS`). Any pending record is also written before deep sleep (idle or PWR hold). A failed write shows the sticky `NVS save fail` banner.
+- **Hold B on Home no longer opens the Menu.** Holding B while already on Home used to fall through to `handleB()` on release and open the Menu. The hold is now swallowed on every screen, so hold-B always means "Home".
+
 ## v1.5.1
 
 **Critical restore:** tip of `main` at v1.5.0 shipped *truncated* `wf_core.h` (476 B) and `wf_ui.h` (3.5 KB ending in a placeholder comment). Home, Menu, device table, NVS prefs, and power management were wiped — the sketch could not build. This release restores the full sources from the last good v1.4.0 firmware commit and keeps the intended battery-icon polish.
