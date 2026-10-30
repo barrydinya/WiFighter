@@ -99,10 +99,11 @@ void loop() {
   tickPower();
 
   static uint32_t lastPaint = 0;
-  if (dirty || millis() - lastPaint > 400) {
+  uint32_t interval = (g_screen == SCR_HOME) ? 90 : 400;  // smoother ring on home
+  if (dirty || millis() - lastPaint > interval) {
     render(dirty || g_uiForce);
     g_uiForce = false;
     lastPaint = millis();
   }
-  delay(15);
+  delay(10);
 }
