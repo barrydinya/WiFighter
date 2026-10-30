@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.3
+
+UI polish for Home and Menu (already complete since v1.2/v1.5.1). Still fully passive / listen-only.
+
+- **Smoother home sweep ring**: Home screen now refreshes every ~90 ms (was 400 ms) so the rotating sweep indicator steps much more smoothly. Other screens keep the 400 ms interval to save cycles.
+- Ring phase ticks and radio flags remain responsive.
+- No functional changes to scanning, leftover detection, or NVS. Compile-checked.
+
 ## v1.5.2
 
 Source review of the v1.5.1 tip: **Home and Menu are complete in the source** (`wf_ui.h` `drawHome`/`paintHomeLive`, `drawMenu`, every sub-screen, and `handleA`/`handleB`). No stubs or TODOs. This release fixes two real issues the review turned up. Still fully passive / listen-only.
