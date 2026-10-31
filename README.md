@@ -11,9 +11,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.5.3)
+## Status (v1.5.4)
 
-> **v1.5.1 restores a broken tip.** A v1.5.0 push truncated `wf_core.h` / `wf_ui.h` so Home and Menu disappeared from the source even though this checklist still said done. Flash **v1.5.1+** only. v1.5.3 smooths the home sweep ring; v1.5.2 rate-limits last-left NVS writes, and hold-B on Home no longer opens the Menu.
+> **v1.5.4 restores a broken tip (again).** A later push truncated `wf_core.h` to a placeholder, so the sketch would not build. Full core is restored; Home and Menu remain complete in `wf_ui.h`. Flash **v1.5.4** only. Prior v1.5.3 smooths the home sweep ring; v1.5.2 rate-limits last-left NVS writes, and hold-B on Home no longer opens the Menu.
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
@@ -30,7 +30,7 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 - [x] Device list: LEFT first, then stronger RSSI; NVS last-left stub shows "saved"
 - [x] Auto-dim after 60 s idle; optional idle deep sleep (Settings); power-button hold → deep sleep. Wake: Plus2 = power button, Plus = BtnA
 - [x] Fail-visible radio/NVS errors on Serial and TFT
-- [ ] Hardware-verified on both boards for v1.5.3 (compile-checked only; see Known limits)
+- [ ] Hardware-verified on both boards for v1.5.4 (compile-checked only; see Known limits)
 - [ ] Full offline OUI database (small built-in table only)
 - [ ] SD / JSON log files — **not applicable**: StickC Plus/Plus2 have no microSD
 
@@ -101,8 +101,8 @@ Uses partition `min_spiffs` (~1.9 MB app). Serial monitor: `115200`.
 Example:
 
 ```
-[WF] boot v1.5.3 board=StickC Plus2 bat~200mAh wake=0
-[WF] t=12345 v1.5.3 live=6 left=1 high=2 probe=3 total=9 ch=6
+[WF] boot v1.5.4 board=StickC Plus2 bat~200mAh wake=0
+[WF] t=12345 v1.5.4 live=6 left=1 high=2 probe=3 total=9 ch=6
 ```
 
 ## Known limits
