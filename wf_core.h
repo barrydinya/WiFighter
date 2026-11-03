@@ -1,1 +1,1 @@
-$(cat /tmp/wf_core.h)
+PLACEHOLDER_FOR_FULL_CONTENT
