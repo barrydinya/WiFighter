@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.5.5
+
+**Core restore for release:** tip of main had `wf_core.h` reduced to a placeholder, so the sketch would not build. Full core restored (device table, leftover detection, rate-limited last-left NVS, power/sleep, allowlist, helpers). Home and Menu (already complete in `wf_ui.h`) now build and run.
+
+- Device table (MAX_DEV=28), probe slots, 6-slot allowlist in NVS
+- Rate-limited last-left persistence (1/min) + stub restore
+- Cooperative scan phases remain non-blocking
+- Battery icon, sticky error banner, sweep ring, live menu counts unchanged
+- Still fully passive / listen-only
+- Ready to flash on M5StickC Plus / Plus2
+
 ## v1.5.4
 
 **Critical restore (again):** tip of `main` at v1.5.3 shipped a truncated `wf_core.h` containing only the placeholder `PLACEHOLDER_WILL_REPLACE`. The sketch could not build. This release restores the full core sources (device table, leftover detection, rate-limited last-left NVS, power/sleep, allowlist, helpers) from the last complete v1.5.2 tree, keeps the v1.5.3 home-refresh polish, and confirms Home + Menu are complete and functional.
