@@ -11,9 +11,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.5.5)
+## Status (v1.6.0)
 
-> **v1.5.5 restores a broken tip.** `wf_core.h` was a placeholder; full core is now restored so the sketch builds. Home dashboard and Menu (already complete in `wf_ui.h`) are functional. Flash v1.5.5.
+> **v1.6.0 adds working last-left NVS persistence and full OUI lookup.** Home dashboard and Menu (already complete in `wf_ui.h`) are functional. Flash v1.6.0.
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
@@ -23,6 +23,7 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 - [x] Settings + allowlist saved to NVS
 - [x] Hold BtnB → Home; A = select/toggle; B = menu/next
 - [x] Passive listen-only by design
+- [x] Last-left NVS persistence (rate-limited) + full OUI table
 
 Home / menu UI: `wf_ui.h`. Device table + NVS: `wf_core.h`. Scan phases: `wf_scan.h`.
 
@@ -54,7 +55,7 @@ Open `WiFighter.ino`, select M5StickC Plus or Plus2 board, install M5Unified + N
 
 ## How "left" works
 
-Devices not seen for the left window (default 45 s) are marked LEFT. Probe requests capture stations advertising networks they previously joined.
+Devices not seen for the left window (default 45 s) are marked LEFT. Probe requests capture stations advertising networks they previously joined. The last LEFT device is persisted to NVS (rate-limited) and restored on next boot.
 
 ## License
 
