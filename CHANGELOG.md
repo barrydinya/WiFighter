@@ -1,3 +1,12 @@
+## v1.6.0
+
+**Finish claimed persistence + OUI**
+- Wired `ouiLookup` to the full table in `oui.h` (was a 2-entry stub).
+- Implemented rate-limited last-left NVS save/restore (was a no-op stub). Home now shows the previous session's last LEFT device after reboot.
+- Dirty flag + flush on power tick / before potential sleep.
+- Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
 # Changelog
 
 ## v1.5.5
