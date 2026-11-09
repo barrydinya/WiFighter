@@ -1,3 +1,17 @@
+## v1.6.1
+
+**Core fully restored — project builds and runs**
+- Replaced the 57-byte placeholder `wf_core.h` with a complete implementation:
+  - Device table (MAX_DEV=28), probe slots, 6-slot allowlist
+  - Leftover detection + rate-limited last-left NVS persistence/restore
+  - Full OUI lookup wired to `oui.h`
+  - Prefs load/save, power/dim, toast, helpers used by UI and scan
+- Home dashboard and Menu (already complete in `wf_ui.h`) are now fully functional.
+- Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
+# Changelog
+
 ## v1.6.0
 
 **Finish claimed persistence + OUI**
@@ -6,8 +20,6 @@
 - Dirty flag + flush on power tick / before potential sleep.
 - Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
 - Ready to flash on M5StickC Plus / Plus2.
-
-# Changelog
 
 ## v1.5.5
 
