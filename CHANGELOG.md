@@ -1,3 +1,11 @@
+## v1.7.0
+
+**Home and Menu fully complete and polished**
+- Confirmed and refined home dashboard (sweep ring, live tiles, last-left, battery, cycle bar).
+- Menu system fully navigable with live counts, settings, allowlist, confirm clear, about.
+- Version bump. Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
 ## v1.6.1
 
 **Core fully restored — project builds and runs**
