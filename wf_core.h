@@ -10,7 +10,7 @@
 #include <esp_wifi.h>
 #include <esp_sleep.h>
 
-#define FW_VERSION "1.7.0"
+#define FW_VERSION "1.7.1"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6

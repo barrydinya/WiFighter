@@ -242,7 +242,10 @@ static void paintHomeLive() {
     M5.Display.setTextColor(COL_WHITE, COL_BG);
     if (!g_scanning) M5.Display.print("paused");
     else if (g_phase == PH_WAIT) M5.Display.printf("next %ds", secondsUntilScan());
-    else M5.Display.printf("%s", phaseLabel());
+    else {
+      M5.Display.setTextColor(COL_AMBER, COL_BG);
+      M5.Display.printf("%s", phaseLabel());
+    }
     {
       uint32_t up = (millis() - g_bootMs) / 1000UL;
       char upbuf[12];

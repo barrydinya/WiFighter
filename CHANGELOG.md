@@ -1,3 +1,11 @@
+## v1.7.1
+
+**UI confirmation and polish release**
+- Home dashboard and full Menu system verified complete and functional on hardware targets.
+- Minor status-line clarity on Home (phase always visible during active cycle).
+- Version bump. Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
 ## v1.7.0
 
 **Home and Menu fully complete and polished**
