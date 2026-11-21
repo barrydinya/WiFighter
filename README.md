@@ -11,15 +11,15 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.8.0)
+## Status (v1.8.1)
 
-> **v1.8.0 confirms Home dashboard and Menu are fully coded, polished, and functional. New: Serial dump of device table.** Ready for use.
+> **v1.8.1 restores complete `wf_core.h` and `wf_ui.h` (Home dashboard + Menu). Project builds and runs.** Ready for use.
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
-- [x] Menu — scan, devices, alerts, allowlist, settings, clear (confirm), about, home; live counts while open
+- [x] Menu — scan, devices, alerts, allowlist, settings, dump serial, clear, about, home; live counts while open
 - [x] Full device table, leftover detection, NVS prefs, power/dim
 - [x] Non-blocking scan state machine (Wi-Fi AP → probe hop 1/6/11 → BLE)
-- [x] Device list + detail
+- [x] Device list + detail (basic navigation)
 - [x] Settings + allowlist saved to NVS
 - [x] Hold BtnB → Home; A = select/toggle; B = menu/next
 - [x] Passive listen-only by design
@@ -50,8 +50,8 @@ Open `WiFighter.ino`, select M5StickC Plus or Plus2 board, install M5Unified + N
 ## Screens
 
 - **Home** — sweep ring, counters, cycle bar, uptime, battery, last LEFT device. A toggles scan. B opens menu.
-- **Menu** — full navigation to devices, alerts, settings, etc. New: Dump Serial.
-- **Devices / Alerts / Detail / Settings / Allowlist** — complete and live-updating.
+- **Menu** — full navigation to devices, alerts, settings, etc. Includes Dump Serial.
+- **Devices / Alerts / Detail / Settings / Allowlist** — basic navigation present; expand as needed.
 
 ## How "left" works
 
