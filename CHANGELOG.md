@@ -1,3 +1,12 @@
+## v1.8.1
+
+**Core + UI fully restored — project builds and runs**
+- Replaced placeholder `wf_core.h` with complete device table, leftover detection, NVS prefs, power/dim, helpers, Serial dump.
+- Replaced placeholder `wf_ui.h` with full Home dashboard (sweep ring, tiles, last-left, battery, cycle bar) and navigable Menu (including Dump Serial).
+- Basic device/alert/settings navigation present.
+- Version bump. Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
 ## v1.8.0
 
 **Menu + Home polish + Serial dump**
