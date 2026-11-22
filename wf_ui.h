@@ -1,5 +1,5 @@
 #pragma once
-// WiFighter UI — 240x135 landscape home dashboard and menu.
+// WiFighter UI — 240x135 landscape home dashboard, menu, and list screens.
 // Passive display only. Authorized networks and devices only.
 
 #include "wf_core.h"
@@ -47,6 +47,7 @@ static const int SET_N = 7;
 static Screen g_painted = (Screen)255;
 static uint32_t g_lastLive = 0;
 #define LIVE_LIST_MS 2000
+#define LIST_ROWS 5
 
 static void ageText(uint32_t ms, char* out, size_t n) {
   uint32_t s = (millis() - ms) / 1000UL;
@@ -346,6 +347,169 @@ static void drawMenu(bool full) {
   footer("A open", "B next");
 }
 
+static int collectList(int* idxs, int max, bool alertsOnly) {
+  int n = 0;
+  for (int i = 0; i < MAX_DEV && n < max; i++) {
+    if (!g_devs[i].used) continue;
+    if (alertsOnly && !(g_devs[i].left || g_devs[i].tag == TAG_HIGH)) continue;
+    idxs[n++] = i;
+  }
+  return n;
+}
+
+static void drawListScreen(const char* title, bool alertsOnly, bool full) {
+  int idxs[MAX_DEV];
+  int n = collectList(idxs, MAX_DEV, alertsOnly);
+  if (g_listIdx >= n) g_listIdx = n > 0 ? n - 1 : 0;
+  if (g_listScroll > g_listIdx) g_listScroll = g_listIdx;
+  if (g_listIdx >= g_listScroll + LIST_ROWS) g_listScroll = g_listIdx - LIST_ROWS + 1;
+  if (g_listScroll < 0) g_listScroll = 0;
+
+  if (full) M5.Display.fillScreen(COL_BG);
+  header(title, COL_CYAN);
+
+  for (int row = 0; row < LIST_ROWS; row++) {
+    int li = g_listScroll + row;
+    int y = 18 + row * 18;
+    if (li >= n) {
+      M5.Display.fillRect(0, y, 240, 18, COL_BG);
+      continue;
+    }
+    int di = idxs[li];
+    Dev& d = g_devs[di];
+    bool on = (li == g_listIdx);
+    M5.Display.fillRect(0, y, 240, 18, on ? COL_PANEL : COL_BG);
+    if (on) M5.Display.fillRect(0, y, 3, 18, COL_AMBER);
+    char mac[18], label[16];
+    macFmt(d.mac, mac, sizeof(mac));
+    clip(d.ssid[0] ? d.ssid : (d.name[0] ? d.name : mac), label, 12);
+    M5.Display.setTextColor(on ? COL_AMBER : COL_WHITE, on ? COL_PANEL : COL_BG);
+    M5.Display.setCursor(6, y + 4);
+    M5.Display.printf("%c %s", kindMark(d.kind), label);
+    M5.Display.setTextColor(d.left ? COL_RED : COL_DIM, on ? COL_PANEL : COL_BG);
+    char ago[8];
+    ageText(d.lastMs, ago, sizeof(ago));
+    M5.Display.setCursor(120, y + 4);
+    M5.Display.print(ago);
+    M5.Display.setTextColor(COL_CYAN, on ? COL_PANEL : COL_BG);
+    M5.Display.setCursor(170, y + 4);
+    M5.Display.printf("%d", d.rssi);
+  }
+  footer("A detail", "B next");
+}
+
+static void drawSettings(bool full) {
+  if (full) M5.Display.fillScreen(COL_BG);
+  header("SETTINGS", COL_CYAN);
+  for (int row = 0; row < SET_N && row < LIST_ROWS + 1; row++) {
+    int y = 18 + row * 16;
+    bool on = (row == g_setIdx);
+    M5.Display.fillRect(0, y, 240, 16, on ? COL_PANEL : COL_BG);
+    if (on) M5.Display.fillRect(0, y, 3, 16, COL_AMBER);
+    M5.Display.setTextColor(on ? COL_AMBER : COL_WHITE, on ? COL_PANEL : COL_BG);
+    M5.Display.setCursor(6, y + 3);
+    M5.Display.print(SET_ITEMS[row]);
+    char val[12] = {0};
+    if (row == 0) snprintf(val, sizeof(val), "%s", g_wifiOn ? "ON" : "OFF");
+    else if (row == 1) snprintf(val, sizeof(val), "%s", g_bleOn ? "ON" : "OFF");
+    else if (row == 2) snprintf(val, sizeof(val), "%s", g_probesOn ? "ON" : "OFF");
+    else if (row == 3) snprintf(val, sizeof(val), "%us", (unsigned)g_scanPeriodSec);
+    else if (row == 4) snprintf(val, sizeof(val), "%us", (unsigned)g_leftWinSec);
+    else if (row == 5) snprintf(val, sizeof(val), "%s", g_sleepOnIdle ? "ON" : "OFF");
+    else snprintf(val, sizeof(val), "back");
+    M5.Display.setTextColor(on ? COL_CYAN : COL_DIM, on ? COL_PANEL : COL_BG);
+    int vw = M5.Display.textWidth(val);
+    M5.Display.setCursor(228 - vw, y + 3);
+    M5.Display.print(val);
+  }
+  footer("A change", "B next");
+}
+
+static void drawAllow(bool full) {
+  if (full) M5.Display.fillScreen(COL_BG);
+  header("ALLOWLIST", COL_CYAN);
+  for (int row = 0; row < LIST_ROWS; row++) {
+    int i = g_listScroll + row;
+    int y = 18 + row * 18;
+    if (i >= g_allowUsed) {
+      M5.Display.fillRect(0, y, 240, 18, COL_BG);
+      continue;
+    }
+    bool on = (i == g_listIdx);
+    M5.Display.fillRect(0, y, 240, 18, on ? COL_PANEL : COL_BG);
+    if (on) M5.Display.fillRect(0, y, 3, 18, COL_AMBER);
+    char mac[18];
+    macFmt(g_allow[i], mac, sizeof(mac));
+    M5.Display.setTextColor(on ? COL_AMBER : COL_WHITE, on ? COL_PANEL : COL_BG);
+    M5.Display.setCursor(6, y + 4);
+    M5.Display.print(mac);
+  }
+  if (g_allowUsed == 0) {
+    M5.Display.setTextColor(COL_DIM, COL_BG);
+    M5.Display.setCursor(20, 40);
+    M5.Display.print("empty - add from detail");
+  }
+  footer("A remove", "B next");
+}
+
+static void drawDetail(bool full) {
+  if (g_detailIdx < 0 || g_detailIdx >= MAX_DEV || !g_devs[g_detailIdx].used) {
+    drawSimple("DETAIL", "no device");
+    return;
+  }
+  if (full) M5.Display.fillScreen(COL_BG);
+  header("DETAIL", COL_CYAN);
+  Dev& d = g_devs[g_detailIdx];
+  char mac[18];
+  macFmt(d.mac, mac, sizeof(mac));
+  const char* oui = ouiLookup(d.mac);
+  M5.Display.setTextColor(COL_WHITE, COL_BG);
+  M5.Display.setCursor(6, 20);
+  M5.Display.printf("%c %s", kindMark(d.kind), d.ssid[0] ? d.ssid : (d.name[0] ? d.name : "unknown"));
+  M5.Display.setCursor(6, 34);
+  M5.Display.print(mac);
+  M5.Display.setCursor(6, 48);
+  M5.Display.printf("RSSI %d  hits %u", d.rssi, d.hits);
+  M5.Display.setCursor(6, 62);
+  char ago[8];
+  ageText(d.lastMs, ago, sizeof(ago));
+  M5.Display.printf("last %s  %s", ago, d.left ? "LEFT" : "live");
+  M5.Display.setCursor(6, 76);
+  if (oui) M5.Display.printf("OUI %s", oui);
+  else M5.Display.print("OUI unknown");
+  M5.Display.setCursor(6, 90);
+  M5.Display.printf("tag %d", (int)d.tag);
+  footer("A allow+", "B back");
+}
+
+static void drawConfirm(bool full) {
+  if (full) M5.Display.fillScreen(COL_BG);
+  header("CONFIRM CLEAR", COL_RED);
+  M5.Display.setTextColor(COL_WHITE, COL_BG);
+  M5.Display.setCursor(20, 40);
+  M5.Display.print("Clear device table?");
+  M5.Display.setCursor(40, 60);
+  M5.Display.print("A = yes   B = no");
+  footer("", "");
+}
+
+static void drawAbout(bool full) {
+  if (full) M5.Display.fillScreen(COL_BG);
+  header("ABOUT", COL_CYAN);
+  M5.Display.setTextColor(COL_WHITE, COL_BG);
+  M5.Display.setCursor(8, 22);
+  M5.Display.printf("WiFighter v%s", FW_VERSION);
+  M5.Display.setCursor(8, 38);
+  M5.Display.print("Passive leftover tracker");
+  M5.Display.setCursor(8, 54);
+  M5.Display.print("BLE + WiFi listen only");
+  M5.Display.setCursor(8, 70);
+  M5.Display.print("Authorized use only");
+  M5.Display.setCursor(8, 86);
+  M5.Display.printf("Board %s", boardLabel());
+  footer("A back", "B back");
+}
+
 static void drawSimple(const char* title, const char* body) {
   M5.Display.fillScreen(COL_BG);
   header(title, COL_CYAN);
@@ -358,8 +522,14 @@ static void drawSimple(const char* title, const char* body) {
 static void render(bool full) {
   if (g_screen == SCR_HOME) drawHome(full || g_painted != SCR_HOME);
   else if (g_screen == SCR_MENU) drawMenu(full || g_painted != SCR_MENU);
-  else if (g_screen == SCR_ABOUT) drawSimple("ABOUT", "WiFighter v" FW_VERSION "\nPassive leftover tracker\nAuthorized use only");
-  else drawSimple("SCREEN", "List/detail screens\nready — extend as needed");
+  else if (g_screen == SCR_DEVICES) drawListScreen("DEVICES", false, full || g_painted != SCR_DEVICES);
+  else if (g_screen == SCR_ALERTS) drawListScreen("ALERTS", true, full || g_painted != SCR_ALERTS);
+  else if (g_screen == SCR_SETTINGS) drawSettings(full || g_painted != SCR_SETTINGS);
+  else if (g_screen == SCR_ALLOW) drawAllow(full || g_painted != SCR_ALLOW);
+  else if (g_screen == SCR_DETAIL) drawDetail(full || g_painted != SCR_DETAIL);
+  else if (g_screen == SCR_CONFIRM) drawConfirm(full || g_painted != SCR_CONFIRM);
+  else if (g_screen == SCR_ABOUT) drawAbout(full || g_painted != SCR_ABOUT);
+  else drawSimple("SCREEN", "unknown");
   g_painted = g_screen;
 }
 
@@ -369,10 +539,56 @@ static void handleA() {
     toast(g_scanning ? "scan on" : "scan off");
   } else if (g_screen == SCR_MENU) {
     if (g_menuIdx == 0) { g_scanning = !g_scanning; toast(g_scanning ? "scan on" : "scan off"); }
+    else if (g_menuIdx == 1) { g_screen = SCR_DEVICES; g_listIdx = 0; g_listScroll = 0; }
+    else if (g_menuIdx == 2) { g_screen = SCR_ALERTS; g_listIdx = 0; g_listScroll = 0; }
+    else if (g_menuIdx == 3) { g_screen = SCR_ALLOW; g_listIdx = 0; g_listScroll = 0; }
+    else if (g_menuIdx == 4) { g_screen = SCR_SETTINGS; g_setIdx = 0; }
     else if (g_menuIdx == 5) { dumpSerial(); toast("dumped"); }
-    else if (g_menuIdx == 6) { memset(g_devs, 0, sizeof(g_devs)); g_lastLeft = -1; toast("cleared"); }
+    else if (g_menuIdx == 6) { g_screen = SCR_CONFIRM; }
+    else if (g_menuIdx == 7) g_screen = SCR_ABOUT;
     else if (g_menuIdx == 8) g_screen = SCR_HOME;
-    else g_screen = SCR_DEVICES;
+  } else if (g_screen == SCR_DEVICES || g_screen == SCR_ALERTS) {
+    int idxs[MAX_DEV];
+    int n = collectList(idxs, MAX_DEV, g_screen == SCR_ALERTS);
+    if (n > 0 && g_listIdx < n) {
+      g_detailIdx = idxs[g_listIdx];
+      g_screen = SCR_DETAIL;
+    }
+  } else if (g_screen == SCR_SETTINGS) {
+    if (g_setIdx == 0) { g_wifiOn = !g_wifiOn; savePrefs(); toast(g_wifiOn ? "wifi on" : "wifi off"); }
+    else if (g_setIdx == 1) { g_bleOn = !g_bleOn; savePrefs(); toast(g_bleOn ? "ble on" : "ble off"); }
+    else if (g_setIdx == 2) { g_probesOn = !g_probesOn; savePrefs(); toast(g_probesOn ? "probe on" : "probe off"); }
+    else if (g_setIdx == 3) {
+      const uint16_t periods[] = {5, 10, 15, 30, 60};
+      for (int i = 0; i < 5; i++) if (g_scanPeriodSec == periods[i]) { g_scanPeriodSec = periods[(i+1)%5]; break; }
+      savePrefs();
+      toast("period set");
+    }
+    else if (g_setIdx == 4) {
+      const uint16_t wins[] = {15, 30, 45, 60, 120};
+      for (int i = 0; i < 5; i++) if (g_leftWinSec == wins[i]) { g_leftWinSec = wins[(i+1)%5]; break; }
+      savePrefs();
+      toast("window set");
+    }
+    else if (g_setIdx == 5) { g_sleepOnIdle = !g_sleepOnIdle; savePrefs(); toast(g_sleepOnIdle ? "sleep on" : "sleep off"); }
+    else if (g_setIdx == 6) g_screen = SCR_MENU;
+  } else if (g_screen == SCR_ALLOW) {
+    if (g_allowUsed > 0 && g_listIdx < g_allowUsed) {
+      removeAllow(g_listIdx);
+      if (g_listIdx >= g_allowUsed) g_listIdx = g_allowUsed > 0 ? g_allowUsed - 1 : 0;
+      toast("removed");
+    }
+  } else if (g_screen == SCR_DETAIL) {
+    if (g_detailIdx >= 0 && g_devs[g_detailIdx].used) {
+      if (addAllow(g_devs[g_detailIdx].mac)) toast("added to allow");
+      else toast("already or full");
+    }
+  } else if (g_screen == SCR_CONFIRM) {
+    memset(g_devs, 0, sizeof(g_devs));
+    g_lastLeft = -1;
+    g_prefs.putBool("llvalid", false);
+    toast("cleared");
+    g_screen = SCR_MENU;
   } else {
     g_screen = SCR_MENU;
   }
@@ -384,6 +600,16 @@ static void handleB() {
     g_screen = SCR_MENU;
   } else if (g_screen == SCR_MENU) {
     g_menuIdx = (g_menuIdx + 1) % MENU_N;
+  } else if (g_screen == SCR_DEVICES || g_screen == SCR_ALERTS) {
+    int idxs[MAX_DEV];
+    int n = collectList(idxs, MAX_DEV, g_screen == SCR_ALERTS);
+    if (n > 0) g_listIdx = (g_listIdx + 1) % n;
+  } else if (g_screen == SCR_SETTINGS) {
+    g_setIdx = (g_setIdx + 1) % SET_N;
+  } else if (g_screen == SCR_ALLOW) {
+    if (g_allowUsed > 0) g_listIdx = (g_listIdx + 1) % g_allowUsed;
+  } else if (g_screen == SCR_DETAIL || g_screen == SCR_ABOUT || g_screen == SCR_CONFIRM) {
+    g_screen = SCR_MENU;
   } else {
     g_screen = SCR_MENU;
   }
