@@ -1,3 +1,15 @@
+## v1.9.0
+
+**Complete UI screens + core enhancements**
+- Full navigation for Devices, Alerts, Settings, Allowlist, Detail, Confirm, About.
+- Device lists with scroll, detail view with OUI lookup.
+- Settings toggles and value cycling saved to NVS.
+- Allowlist add from detail, remove from list.
+- Rate-limited last-left NVS persistence and restore on boot.
+- OUI lookup integrated.
+- Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2.
+
 ## v1.8.1
 
 **Core + UI fully restored — project builds and runs**
