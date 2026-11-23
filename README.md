@@ -11,9 +11,9 @@ Watches radios that are still talking after they leave a network: Wi-Fi access p
 >
 > **You are responsible for how you use it.** Laws on intercepting radio traffic and tracking people or devices (e.g. US 18 U.S.C. § 2511 / FCC rules, EU/UK GDPR and computer-misuse laws) vary by jurisdiction. Only monitor spaces, networks, and devices you own or are authorized in writing to assess. Do not use WiFighter to follow, profile, or locate people. MAC addresses and probe SSIDs can be personal data — don't publish captures.
 
-## Status (v1.9.0)
+## Status (v2.0.0)
 
-> **v1.9.0 completes full UI screens and core features. Project builds and runs.** Ready for use.
+> **v2.0.0 is the stable complete release. Home, Menu, and all screens fully coded and functional.** Ready for use.
 
 - [x] Home screen — sweep ring with AP / probe / BLE ticks, radio flags, cycle bar, last-left card, DEV / IN / LEFT / HIGH / PRB tiles, uptime, battery %
 - [x] Menu — scan, devices, alerts, allowlist, settings, dump serial, clear, about, home; live counts while open
