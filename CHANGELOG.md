@@ -1,3 +1,13 @@
+## v2.1.0
+
+**UI polish — Home dashboard and Menu refined**
+
+- Home screen sweep ring enhanced with clearer phase ticks and live status.
+- Menu navigation and live counters confirmed fully responsive.
+- Minor layout and color consistency improvements for better readability on 240x135.
+- Still fully passive / listen-only. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2. Project complete.
+
 ## v2.0.0
 
 **Stable release — Home + Menu fully complete**
