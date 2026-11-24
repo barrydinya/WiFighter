@@ -8,7 +8,7 @@
 #include <Preferences.h>
 #include "oui.h"
 
-#define FW_VERSION "2.0.0"
+#define FW_VERSION "2.1.0"
 #define MAX_DEV 28
 #define PROBE_SLOTS 12
 #define ALLOW_SLOTS 6
