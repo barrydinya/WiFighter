@@ -1,3 +1,14 @@
+## v2.2.0
+
+**Home screen and Menu refinements**
+
+- Sweep ring now changes color dynamically based on current scan phase (green WiFi, amber Probe, cyan BLE) for clearer visual feedback.
+- Larger phase tick dots on the ring.
+- Faster sweep animation.
+- Menu and Home confirmed fully coded, responsive, and live-updating.
+- Still fully passive / listen-only by design. No deauth, association, injection, or GATT connect.
+- Ready to flash on M5StickC Plus / Plus2. Project complete.
+
 ## v2.1.0
 
 **UI polish — Home dashboard and Menu refined**
